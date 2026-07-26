@@ -15,16 +15,23 @@
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
   <div id="app" class="container">
+    <!-- Header -->
     <header class="header">
       <div class="brand">
         <div class="logo-icon"></div>
-        <div>
-          <select class="fy-select" id="fySelect" aria-label="Fiscal year">
-            <option value="2024-25">FY 2024-25</option>
-            <option value="2025-26">FY 2025-26</option>
-            <option value="2026-27" selected>FY 2026-27</option>
-          </select>
-          <h1 class="brand-title">Portfolio OS <span class="v2-tag">v2.0</span></h1>
+        <div class="brand-title-group">
+          <div class="brand-title-row">
+            <h1 class="brand-title">Portfolio OS</h1>
+            <span class="v2-tag">v2.0</span>
+          </div>
+          <div class="fy-selector-row">
+            <label for="fySelect">TAX PERIOD:</label>
+            <select class="fy-select" id="fySelect">
+              <option value="2024-25">FY 2024-25</option>
+              <option value="2025-26">FY 2025-26</option>
+              <option value="2026-27" selected>FY 2026-27</option>
+            </select>
+          </div>
         </div>
       </div>
       <div class="header-actions">
@@ -40,13 +47,13 @@
         <input type="file" id="fileUploadInput" accept=".pdf,.csv" style="display: none;">
 
         <div class="status-pill">
-          <span class="status-dot"></span> DuckDB Engine Active
+          <span class="status-dot"></span> Engine Active
         </div>
       </div>
     </header>
 
-    <main class="dashboard-grid">
-      <!-- Top Metrics Row -->
+    <!-- Top Metrics Cards Grid -->
+    <section class="top-metrics-grid">
       <div class="glass-card metric-box">
         <div class="metric-label">NET WORTH (VALUATION)</div>
         <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
@@ -78,13 +85,16 @@
         <div class="metric-value font-mono highlight-cyan skeleton xirr-val">--%</div>
         <div class="metric-subtext">Money-Weighted XIRR</div>
       </div>
+    </section>
 
-      <!-- Main Performance Chart -->
-      <div class="glass-card chart-container full-width-desktop">
+    <!-- Main Dashboard 12-Column Grid -->
+    <main class="dashboard-grid">
+      <!-- Portfolio Performance Curve -->
+      <div class="glass-card col-12">
         <div class="card-header">
           <h2>Portfolio Performance Curve</h2>
           <div class="chart-controls">
-            <button class="pill-btn active">LIVE</button>
+            <span class="live-tag">LIVE INVESTED CAPITAL</span>
           </div>
         </div>
         <div class="canvas-wrapper" id="performanceWrapper">
@@ -92,8 +102,8 @@
         </div>
       </div>
 
-      <!-- Asset Allocations (Fund Level & Category Exposure) -->
-      <div class="glass-card allocation-section">
+      <!-- Fund Allocation & Risk Exposure -->
+      <div class="glass-card col-6">
         <div class="card-header">
           <h2>Fund Allocation</h2>
           <span class="live-tag">BY SCHEME</span>
@@ -103,7 +113,7 @@
         </div>
       </div>
 
-      <div class="glass-card allocation-section">
+      <div class="glass-card col-6">
         <div class="card-header">
           <h2>Risk Exposure</h2>
           <span class="live-tag">BY CATEGORY</span>
@@ -113,14 +123,14 @@
         </div>
       </div>
 
-      <!-- Tax-Aware Rebalancing Calculator Widget -->
-      <div class="glass-card rebalance-section half-width">
+      <!-- Tax-Aware Rebalancing & Schedule FA Checklist -->
+      <div class="glass-card col-6">
         <div class="card-header">
           <h2>Tax-Aware Rebalancing Predictor</h2>
           <span class="live-tag">TAX DRAG CALCULATOR</span>
         </div>
         <div class="rebalance-controls">
-          <label>Target Redemption Amount (INR):</label>
+          <label class="input-lbl">Target Redemption Amount (INR):</label>
           <div class="slider-box">
             <input type="range" id="rebalanceSlider" min="25000" max="1000000" step="25000" value="100000">
             <span class="font-mono slider-val" id="rebalanceSliderVal">₹ 1,00,000</span>
@@ -133,8 +143,7 @@
         </div>
       </div>
 
-      <!-- Schedule FA Pre-Flight Compliance Checklist -->
-      <div class="glass-card compliance-section half-width">
+      <div class="glass-card col-6">
         <div class="card-header">
           <h2>Schedule FA Pre-Flight Checklist</h2>
           <span class="live-tag">FOREIGN ASSETS</span>
@@ -157,8 +166,8 @@
         </div>
       </div>
 
-      <!-- Decision Radar (Tax Harvest & Maturation Ladder) -->
-      <div class="glass-card radar-section full-width-desktop">
+      <!-- Decision Radar -->
+      <div class="glass-card col-12">
         <div class="card-header">
           <h2>Decision Radar</h2>
           <span class="live-tag">AI TAX ADVISOR</span>
@@ -168,8 +177,8 @@
         </div>
       </div>
 
-      <!-- Open Holdings Table with FIFO Lot Expansion -->
-      <div class="glass-card table-section full-width-desktop">
+      <!-- Open Holdings Table -->
+      <div class="glass-card col-12">
         <div class="card-header">
           <h2>Open Holdings & FIFO Lots</h2>
           <span class="live-tag">DRILL-DOWN</span>
@@ -194,8 +203,8 @@
         </div>
       </div>
 
-      <!-- Realized Disposals Audit Trail Log -->
-      <div class="glass-card table-section full-width-desktop">
+      <!-- Realized Disposals Log -->
+      <div class="glass-card col-12">
         <div class="card-header">
           <h2>Realized Disposals Audit Log</h2>
           <span class="live-tag">SELECTED FY</span>
