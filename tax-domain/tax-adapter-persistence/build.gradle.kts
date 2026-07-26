@@ -5,7 +5,7 @@ plugins {
 
 dependencies {
     implementation(project(":tax-core"))
-    implementation("org.duckdb:duckdb_jdbc:0.10.0")
+    implementation("org.duckdb:duckdb_jdbc:1.1.3")
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
