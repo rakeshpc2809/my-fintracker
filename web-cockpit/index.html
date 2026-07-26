@@ -47,7 +47,7 @@
         <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
         <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
         <div class="metric-subtext net-worth-sub">Active Holdings: -- Schemes</div>
-        <div class="stale-nav-note" id="staleNavNote">-- holdings priced from last cost (NAV unavailable)</div>
+        <div class="stale-nav-note" id="staleNavNote" style="display:none;"></div>
       </div>
 
       <div class="glass-card metric-box">
@@ -84,35 +84,91 @@
         </div>
         <div class="canvas-wrapper" id="performanceWrapper">
           <canvas id="performanceChart"></canvas>
-          <div class="chart-empty-state" id="performanceEmpty" style="display: none;">
-            <div class="chart-empty-icon">📈</div>
-            <div>No transactions yet — upload a CAS statement or broker CSV to see your invested-capital curve.</div>
-          </div>
         </div>
       </div>
 
-      <!-- Asset Allocation & Decision Radar Grid -->
+      <!-- Asset Allocations (Fund Level & Category Exposure) -->
       <div class="glass-card allocation-section">
         <div class="card-header">
-          <h2>Asset Allocation</h2>
-          <span class="live-tag">BY ASSET</span>
+          <h2>Fund Allocation</h2>
+          <span class="live-tag">BY SCHEME</span>
         </div>
-        <div class="canvas-wrapper-small" id="allocationWrapper">
+        <div class="canvas-wrapper-small">
           <canvas id="allocationChart"></canvas>
-          <div class="chart-empty-state" id="allocationEmpty" style="display: none;">
-            <div class="chart-empty-icon">🥧</div>
-            <div>No open holdings yet.</div>
-          </div>
         </div>
       </div>
 
-      <div class="glass-card radar-section">
+      <div class="glass-card allocation-section">
+        <div class="card-header">
+          <h2>Risk Exposure</h2>
+          <span class="live-tag">BY CATEGORY</span>
+        </div>
+        <div class="canvas-wrapper-small">
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Decision Radar (Tax Harvest & Maturation Ladder) -->
+      <div class="glass-card radar-section full-width-desktop">
         <div class="card-header">
           <h2>Decision Radar</h2>
-          <span class="live-tag">TAX HARVEST ADVISOR</span>
+          <span class="live-tag">AI TAX ADVISOR</span>
         </div>
         <div class="radar-list">
-          <div class="radar-empty-state">Scanning open lots for tax-loss harvesting opportunities...</div>
+          <div class="radar-empty-state">Scanning open lots for tax-loss harvesting and LTCG maturation opportunities...</div>
+        </div>
+      </div>
+
+      <!-- Open Holdings Table with FIFO Lot Expansion -->
+      <div class="glass-card table-section full-width-desktop">
+        <div class="card-header">
+          <h2>Open Holdings & FIFO Lots</h2>
+          <span class="live-tag">DRILL-DOWN</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table" id="holdingsTable">
+            <thead>
+              <tr>
+                <th>Scheme Name</th>
+                <th>Category</th>
+                <th>Invested</th>
+                <th>Current Value</th>
+                <th>Unrealized Gain</th>
+                <th>Allocation %</th>
+                <th>Open Lots</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="7" class="loading-td">Loading holdings...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Realized Disposals Audit Trail Log -->
+      <div class="glass-card table-section full-width-desktop">
+        <div class="card-header">
+          <h2>Realized Disposals Audit Log</h2>
+          <span class="live-tag">SELECTED FY</span>
+        </div>
+        <div class="table-container">
+          <table class="data-table" id="realizedLogTable">
+            <thead>
+              <tr>
+                <th>Disposal Date</th>
+                <th>Acquisition Date</th>
+                <th>Scheme Name</th>
+                <th>Units</th>
+                <th>Proceeds</th>
+                <th>Cost Basis</th>
+                <th>Realized Gain</th>
+                <th>Tax Term</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="8" class="loading-td">Loading realized log...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </main>
