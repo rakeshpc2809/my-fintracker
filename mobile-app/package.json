@@ -9,11 +9,16 @@
     "preview": "vite preview",
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
-    "apk:debug": "npm run build && cap sync android && cd android && ./gradlew assembleDebug"
+    "apk:debug": "npm run build && cap sync android && cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleDebug"
   },
   "dependencies": {
     "@capacitor/android": "^6.0.0",
-    "@capacitor/core": "^6.0.0"
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/haptics": "^6.0.0",
+    "@capacitor/network": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
