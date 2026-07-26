@@ -1,0 +1,34 @@
+fy: "2026-27"
+effective_start: "2026-04-01"
+effective_end: "2027-03-31"
+
+rules:
+  equity_listed:
+    ltcg_threshold_months: 12
+    ltcg_rate: 0.125
+    stcg_rate: 0.20
+    annual_exemption: 125000
+    section: "112A / 111A"
+
+  specified_debt_fund:
+    effective_from: "2023-04-01"
+    always_short_term: true
+    debt_pct_threshold: 0.65
+    taxation_mode: "SLAB_RATE"
+    section: "50AA"
+
+  gold_silver_international:
+    ltcg_threshold_months: 24
+    ltcg_rate: 0.125
+    stcg_rate: "SLAB_RATE"
+    annual_exemption: 0
+
+  sgb:
+    maturity_years: 8
+    maturity_gain_exempt: true
+    exchange_sale_stcg_rate: "SLAB_RATE"
+    exchange_sale_ltcg_rate: 0.125
+    exchange_sale_ltcg_threshold_months: 24
+
+  grandfathering:
+    cutoff_date: "2018-01-31"

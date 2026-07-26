@@ -1,0 +1,15 @@
+[Unit]
+Description=Personal Capital Gains Tax Ledger & Portfolio Cockpit (Podman)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+Restart=always
+TimeoutStartSec=60
+WorkingDirectory=/home/rakeshpc/Projects/my-fintracker
+ExecStart=/usr/bin/podman compose up --remove-orphans
+ExecStop=/usr/bin/podman compose down
+
+[Install]
+WantedBy=default.target

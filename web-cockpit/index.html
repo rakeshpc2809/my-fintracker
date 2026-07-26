@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portfolio Cockpit & Tax Ledger</title>
+  <link rel="stylesheet" href="./src/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-obsidian">
+  <div class="ambient-glow"></div>
+  <div id="app" class="container">
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon"></div>
+        <div>
+          <span class="badge">FY 2026-27</span>
+          <h1 class="brand-title">Portfolio Cockpit</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <label for="fileUploadInput" class="upload-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Upload CAS PDF / CSV
+        </label>
+        <input type="file" id="fileUploadInput" accept=".pdf,.csv" style="display: none;">
+
+        <div class="status-pill">
+          <span class="status-dot"></span> DuckDB Engine Active
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-grid">
+      <!-- Top Metrics Row -->
+      <div class="glass-card metric-box">
+        <div class="metric-label">NET WORTH (VALUATION)</div>
+        <div class="metric-value font-mono net-worth-val">₹ --</div>
+        <div class="metric-delta positive net-worth-sub">
+          Active Holdings: -- Schemes
+        </div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">REALIZED STCG (FY 26-27)</div>
+        <div class="metric-value font-mono stcg-val">₹ 0</div>
+        <div class="metric-subtext">Taxable under Sec 111A / 50AA</div>
+      </div>
+
+      <div class="glass-card metric-box exemption-box">
+        <div class="metric-label">LTCG EXEMPTION METER (SEC 112A)</div>
+        <div class="metric-value font-mono ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
+        <div class="progress-track">
+          <div class="progress-fill-gradient" style="width: 0%;"></div>
+        </div>
+        <div class="meter-meta">
+          <span class="pct-used">0% Used</span>
+          <span class="remaining">₹ 1,25,000 Available</span>
+        </div>
+      </div>
+
+      <div class="glass-card metric-box">
+        <div class="metric-label">PORTFOLIO XIRR</div>
+        <div class="metric-value font-mono highlight-cyan xirr-val">--%</div>
+        <div class="metric-subtext">Money-Weighted XIRR</div>
+      </div>
+
+      <!-- Main Performance Chart -->
+      <div class="glass-card chart-container full-width-desktop">
+        <div class="card-header">
+          <h2>Portfolio Performance Curve</h2>
+          <div class="chart-controls">
+            <button class="pill-btn active">LIVE</button>
+          </div>
+        </div>
+        <div class="canvas-wrapper">
+          <canvas id="performanceChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Asset Allocation & Decision Radar Grid -->
+      <div class="glass-card allocation-section">
+        <div class="card-header">
+          <h2>Asset Allocation</h2>
+          <span class="live-tag">BY ASSET</span>
+        </div>
+        <div class="canvas-wrapper-small">
+          <canvas id="allocationChart"></canvas>
+        </div>
+      </div>
+
+      <div class="glass-card radar-section">
+        <div class="card-header">
+          <h2>Decision Radar</h2>
+          <span class="live-tag">TAX HARVEST ADVISOR</span>
+        </div>
+        <div class="radar-list">
+          <div class="radar-empty-state">Scanning open lots for tax-loss harvesting opportunities...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

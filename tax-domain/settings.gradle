@@ -1,0 +1,8 @@
+rootProject.name = 'tax-domain'
+
+include 'tax-core'
+include 'tax-adapter-persistence'
+include 'tax-adapter-api'
+
+include ':valuation-engine'
+project(':valuation-engine').projectDir = file('../valuation-engine')

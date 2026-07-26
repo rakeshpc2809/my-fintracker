@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  tax-ledger:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tax_ledger_cockpit
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DUCKDB_PATH=/app/data/tax_ledger.duckdb
+    restart: unless-stopped
