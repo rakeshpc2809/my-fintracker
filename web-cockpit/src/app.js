@@ -87,17 +87,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function fetchLiveMetrics() {
   try {
-    // 1. Portfolio summary & XIRR
     const summaryRes = await fetch(`${API_BASE}/portfolio/summary`);
     if (summaryRes.ok) {
       const summary = await summaryRes.json();
       updatePortfolioSummary(summary);
     }
 
-    // 2. Tax metrics for current FY
     fetchTaxMetrics();
 
-    // 3. Integrity check
     const integrityRes = await fetch(`${API_BASE}/events/integrity`);
     if (integrityRes.ok) {
       const data = await integrityRes.json();
@@ -107,14 +104,12 @@ async function fetchLiveMetrics() {
       }
     }
 
-    // 4. Performance History Chart
     const historyRes = await fetch(`${API_BASE}/portfolio/history`);
     if (historyRes.ok) {
       const points = await historyRes.json();
       renderPerformanceChart(points);
     }
 
-    // 5. Asset Allocations (Fund Level & Category)
     const allocRes = await fetch(`${API_BASE}/portfolio/allocation`);
     if (allocRes.ok) {
       const allocations = await allocRes.json();
@@ -127,20 +122,15 @@ async function fetchLiveMetrics() {
       renderCategoryChart(catAllocations);
     }
 
-    // 6. Holdings Table with Open Lots
     const holdingsRes = await fetch(`${API_BASE}/portfolio/holdings`);
     if (holdingsRes.ok) {
       const holdings = await holdingsRes.json();
       renderHoldingsTable(holdings);
     }
 
-    // 7. Decision Radar
     fetchDecisionRadar();
-
-    // 8. Realized Disposals Log
     fetchRealizedLog();
 
-    // 9. Rebalance Preview
     const slider = document.getElementById('rebalanceSlider');
     const amt = slider ? slider.value : 100000;
     fetchRebalancePreview(amt);
@@ -439,134 +429,113 @@ function renderRealizedLogTable(logs) {
 }
 
 function renderPerformanceChart(points) {
-  const ctx = document.getElementById('performanceChart');
-  if (!ctx || !points || points.length === 0) return;
+  const container = document.getElementById('performanceChart');
+  if (!container || !points || points.length === 0 || !window.echarts) return;
 
-  const labels = points.map(p => p.date);
+  if (perfChart) perfChart.dispose();
+  perfChart = window.echarts.init(container);
+
+  const dates = points.map(p => p.date);
   const values = points.map(p => parseFloat(p.invested) || 0);
 
-  if (perfChart) perfChart.destroy();
-
-  const chartCtx = ctx.getContext('2d');
-  const gradient = chartCtx.createLinearGradient(0, 0, 0, 260);
-  gradient.addColorStop(0, 'rgba(6, 182, 212, 0.35)');
-  gradient.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
-
-  perfChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Invested Capital (₹)',
-        data: values,
-        borderColor: '#06b6d4',
-        borderWidth: 3,
-        backgroundColor: gradient,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 2,
-        pointHoverRadius: 6
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#121a2b',
-          borderColor: 'rgba(255, 255, 255, 0.1)',
-          borderWidth: 1,
-          callbacks: {
-            label: (context) => ` ₹ ${Math.round(context.parsed.y).toLocaleString('en-IN')}`
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid: { color: 'rgba(255, 255, 255, 0.03)' },
-          ticks: { color: '#64748b', font: { family: 'Inter', size: 10 } }
-        },
-        y: {
-          grid: { color: 'rgba(255, 255, 255, 0.05)' },
-          ticks: {
-            color: '#64748b',
-            font: { family: 'JetBrains Mono', size: 10 },
-            callback: (val) => `₹ ${(val / 100000).toFixed(1)}L`
-          }
-        }
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: '#0f172a',
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      textStyle: { color: '#f8fafc' },
+      formatter: (params) => {
+        const val = Math.round(params[0].value);
+        return `${params[0].name}<br/>Invested: <strong>₹ ${val.toLocaleString('en-IN')}</strong>`;
       }
-    }
-  });
+    },
+    grid: { top: 20, right: 20, bottom: 30, left: 65 },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      axisLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.1)' } },
+      axisLabel: { color: '#64748b', fontSize: 10 }
+    },
+    yAxis: {
+      type: 'value',
+      splitLine: { lineStyle: { color: 'rgba(255, 255, 255, 0.04)' } },
+      axisLabel: {
+        color: '#64748b',
+        fontSize: 10,
+        formatter: (val) => `₹ ${(val / 100000).toFixed(1)}L`
+      }
+    },
+    series: [{
+      data: values,
+      type: 'line',
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: '#06b6d4', width: 3 },
+      areaStyle: {
+        color: new window.echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(6, 182, 212, 0.35)' },
+          { offset: 1, color: 'rgba(6, 182, 212, 0.0)' }
+        ])
+      }
+    }]
+  };
+  perfChart.setOption(option);
 }
 
 function renderAllocationChart(allocations) {
-  const ctx = document.getElementById('allocationChart');
-  if (!ctx || !allocations || allocations.length === 0) return;
+  const container = document.getElementById('allocationChart');
+  if (!container || !allocations || allocations.length === 0 || !window.echarts) return;
+
+  if (allocChart) allocChart.dispose();
+  allocChart = window.echarts.init(container);
 
   const top7 = allocations.slice(0, 7);
-  const labels = top7.map(a => a.assetName.substring(0, 20));
-  const values = top7.map(a => parseFloat(a.currentValue) || 0);
+  const data = top7.map(a => ({
+    name: a.assetName.substring(0, 20),
+    value: parseFloat(a.currentValue) || 0
+  }));
 
-  if (allocChart) allocChart.destroy();
-
-  allocChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: values,
-        backgroundColor: [
-          '#06b6d4', '#8b5cf6', '#f59e0b', '#10b981', '#ec4899', '#6366f1', '#14b8a6'
-        ],
-        borderWidth: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: '#94a3b8', font: { family: 'Inter', size: 10 } }
-        }
-      }
-    }
-  });
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'item', formatter: '{b}: ₹ {c} ({d}%)' },
+    series: [{
+      type: 'pie',
+      radius: ['45%', '75%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 6, borderColor: '#070a12', borderWidth: 2 },
+      label: { show: false },
+      data: data
+    }]
+  };
+  allocChart.setOption(option);
 }
 
 function renderCategoryChart(catAllocations) {
-  const ctx = document.getElementById('categoryChart');
-  if (!ctx || !catAllocations || catAllocations.length === 0) return;
+  const container = document.getElementById('categoryChart');
+  if (!container || !catAllocations || catAllocations.length === 0 || !window.echarts) return;
 
-  const labels = catAllocations.map(c => c.categoryName);
-  const values = catAllocations.map(c => parseFloat(c.currentValue) || 0);
+  if (categoryChart) categoryChart.dispose();
+  categoryChart = window.echarts.init(container);
 
-  if (categoryChart) categoryChart.destroy();
+  const data = catAllocations.map(c => ({
+    name: c.categoryName,
+    value: parseFloat(c.currentValue) || 0
+  }));
 
-  categoryChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: values,
-        backgroundColor: [
-          '#10b981', '#f59e0b', '#eab308', '#8b5cf6', '#06b6d4'
-        ],
-        borderWidth: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'right',
-          labels: { color: '#94a3b8', font: { family: 'Inter', size: 10 } }
-        }
-      }
-    }
-  });
+  const option = {
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'item', formatter: '{b}: ₹ {c} ({d}%)' },
+    series: [{
+      type: 'pie',
+      radius: ['45%', '75%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 6, borderColor: '#070a12', borderWidth: 2 },
+      label: { show: false },
+      data: data
+    }]
+  };
+  categoryChart.setOption(option);
 }
 
 function showToast(message, type = 'success') {

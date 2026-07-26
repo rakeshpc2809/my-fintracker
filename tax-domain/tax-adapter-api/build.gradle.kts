@@ -8,7 +8,7 @@ application {
     mainClass.set("com.fintracker.tax.api.ApplicationKt")
 }
 
-val ktorVersion = "2.3.10"
+val ktorVersion = "3.0.1"
 
 dependencies {
     implementation(project(":tax-core"))

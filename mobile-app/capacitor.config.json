@@ -1,0 +1,15 @@
+{
+  "appId": "com.fintracker.portfolioos",
+  "appName": "Portfolio OS",
+  "webDir": "build",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

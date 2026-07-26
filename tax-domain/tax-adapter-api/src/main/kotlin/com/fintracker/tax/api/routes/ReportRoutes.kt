@@ -13,7 +13,6 @@ import com.fintracker.valuation.xirr.CashFlow
 import com.fintracker.valuation.xirr.XirrEngine
 import io.ktor.http.ContentDisposition
 import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
@@ -159,6 +158,17 @@ data class RebalancePreviewDto(
     val effectiveTaxRatePct: String,
     val ltcgExemptionHarvested: String,
     val selectedLots: List<RebalanceLotDto>
+)
+
+@Serializable
+data class MobileSyncSnapshotDto(
+    val generatedAt: String,
+    val fiscalYear: String,
+    val totalInvested: String,
+    val totalCurrentValue: String,
+    val totalUnrealizedGain: String,
+    val holdings: List<HoldingDetailDto>,
+    val realizedLog: List<RealizedLogDto>
 )
 
 fun Route.reportRoutes(eventStore: EventStorePort) {
@@ -334,6 +344,57 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
     }
 
     route("/api/v1/portfolio") {
+        get("/snapshot") {
+            val fy = call.request.queryParameters["fy"] ?: "2026-27"
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, matchedLots) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy { it.isin!! }
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+
+            val totalInvested = openLots.fold(BigDecimal.ZERO) { acc, lot -> acc.add(lot.totalCostBasis) }
+            val totalCurrentValue = openLots.fold(BigDecimal.ZERO) { acc, lot ->
+                val nav = navMap[lot.assetId]?.nav ?: lot.costPerUnit
+                acc.add(lot.remainingUnits.multiply(nav))
+            }
+            val totalGain = totalCurrentValue.subtract(totalInvested)
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val holdings = getHoldingsList(openLots, navMap, today)
+            val (startDate, endDate) = getFiscalYearBounds(fy)
+            val fyLots = matchedLots.filter { it.disposalDate >= startDate && it.disposalDate <= endDate }
+            val assetNameMap = allEvents.associate { it.assetId to it.assetName }
+
+            val realizedLogs = fyLots.map { m ->
+                RealizedLogDto(
+                    matchId = m.matchId,
+                    disposalDate = m.disposalDate.toString(),
+                    acquisitionDate = m.acquisitionDate.toString(),
+                    assetId = m.assetId,
+                    assetName = assetNameMap[m.assetId] ?: m.assetId,
+                    unitsMatched = m.unitsMatched.fmt(),
+                    saleProceeds = m.saleProceeds.fmt(),
+                    costBasis = m.costBasis.fmt(),
+                    realizedGain = m.realizedGain.fmt(),
+                    taxTerm = m.taxTerm.name,
+                    holdingPeriodDays = m.holdingPeriodDays
+                )
+            }.sortedByDescending { it.disposalDate }
+
+            call.respond(
+                MobileSyncSnapshotDto(
+                    generatedAt = Clock.System.now().toString(),
+                    fiscalYear = fy,
+                    totalInvested = totalInvested.fmt(),
+                    totalCurrentValue = totalCurrentValue.fmt(),
+                    totalUnrealizedGain = totalGain.fmt(),
+                    holdings = holdings,
+                    realizedLog = realizedLogs
+                )
+            )
+        }
+
         get("/rebalance-preview") {
             val amountStr = call.request.queryParameters["amount"] ?: "100000"
             val targetAmount = BigDecimal(amountStr)
@@ -379,7 +440,7 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
             val allEvents = eventStore.getAllEvents()
             val (openLots, _) = fifoMatcher.processEvents(allEvents)
             val navEntries = amfiSync.fetchLatestNavsFromAmfi()
-            val navMap = navEntries.associateBy { it.isin }
+            val navMap = navEntries.filter { it.isin != null }.associateBy { it.isin!! }
 
             val totalInvested = openLots.fold(BigDecimal.ZERO) { acc, lot -> acc.add(lot.totalCostBasis) }
             val activeHoldingCount = openLots.map { it.assetId }.distinct().size
@@ -391,7 +452,6 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
             }
             val totalUnrealizedGain = totalCurrentValue.subtract(totalInvested)
 
-            // Construct XIRR cashflows
             val cashflows = mutableListOf<CashFlow>()
             for (event in allEvents) {
                 when (event.eventType) {
@@ -427,82 +487,11 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
             val allEvents = eventStore.getAllEvents()
             val (openLots, _) = fifoMatcher.processEvents(allEvents)
             val navEntries = amfiSync.fetchLatestNavsFromAmfi()
-            val navMap = navEntries.associateBy { it.isin }
+            val navMap = navEntries.filter { it.isin != null }.associateBy { it.isin!! }
             val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
 
-            val totalVal = openLots.fold(BigDecimal.ZERO) { acc, lot ->
-                val nav = navMap[lot.assetId]?.nav ?: lot.costPerUnit
-                acc.add(lot.remainingUnits.multiply(nav))
-            }
-
-            val grouped = openLots.groupBy { it.assetId }
-            val holdings = mutableListOf<HoldingDetailDto>()
-            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
-
-            for ((assetId, lots) in grouped) {
-                val assetName = lots.first().assetName
-                val category = TaxClassifier.detectCategory(assetId, assetName)
-
-                val thresholdDays = when (category) {
-                    com.fintracker.tax.core.matcher.AssetCategory.EQUITY -> 365L
-                    com.fintracker.tax.core.matcher.AssetCategory.GOLD_SILVER, com.fintracker.tax.core.matcher.AssetCategory.INTERNATIONAL, com.fintracker.tax.core.matcher.AssetCategory.SGB -> 730L
-                    com.fintracker.tax.core.matcher.AssetCategory.DEBT_SPECIFIED_50AA -> -1L
-                }
-
-                val invested = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.totalCostBasis) }
-                val currentVal = lots.fold(BigDecimal.ZERO) { acc, l ->
-                    val nav = navMap[assetId]?.nav ?: l.costPerUnit
-                    acc.add(l.remainingUnits.multiply(nav))
-                }
-                val unrealizedGain = currentVal.subtract(invested)
-                val unrealizedGainPct = if (invested > BigDecimal.ZERO) {
-                    unrealizedGain.multiply(BigDecimal("100")).divide(invested, 2, RoundingMode.HALF_UP).toPlainString()
-                } else "0.00"
-
-                val allocPct = if (totalVal > BigDecimal.ZERO) {
-                    currentVal.multiply(BigDecimal("100")).divide(totalVal, 2, RoundingMode.HALF_UP).toPlainString()
-                } else "0.00"
-
-                val lotDtos = lots.map { l ->
-                    val nav = navMap[assetId]?.nav ?: l.costPerUnit
-                    val lotCurVal = l.remainingUnits.multiply(nav)
-                    val lotGain = lotCurVal.subtract(l.totalCostBasis)
-                    val hDays = l.acquisitionDate.daysUntil(today).toLong()
-                    val daysToLtcg = if (thresholdDays > 0) (thresholdDays - hDays).coerceAtLeast(0) else -1L
-                    val isLtcg = thresholdDays > 0 && hDays >= thresholdDays
-
-                    OpenLotDto(
-                        lotId = l.lotId,
-                        acquisitionDate = l.acquisitionDate.toString(),
-                        remainingUnits = l.remainingUnits.fmt(),
-                        costPerUnit = l.costPerUnit.fmt(),
-                        totalCostBasis = l.totalCostBasis.fmt(),
-                        currentNav = nav.fmt(),
-                        currentValue = lotCurVal.fmt(),
-                        unrealizedGain = lotGain.fmt(),
-                        holdingDays = hDays,
-                        daysToLtcg = daysToLtcg,
-                        isLtcg = isLtcg
-                    )
-                }.sortedBy { it.acquisitionDate }
-
-                holdings.add(
-                    HoldingDetailDto(
-                        assetId = assetId,
-                        assetName = assetName,
-                        category = category.name,
-                        investedValue = invested.fmt(),
-                        currentValue = currentVal.fmt(),
-                        unrealizedGain = unrealizedGain.fmt(),
-                        unrealizedGainPct = unrealizedGainPct,
-                        allocationPct = allocPct,
-                        navStale = navMap[assetId] == null,
-                        lots = lotDtos
-                    )
-                )
-            }
-
-            call.respond(holdings.sortedByDescending { BigDecimal(it.currentValue) })
+            val holdings = getHoldingsList(openLots, navMap, today)
+            call.respond(holdings)
         }
 
         get("/category-allocation") {
@@ -620,6 +609,86 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
             call.respond(points)
         }
     }
+}
+
+private fun getHoldingsList(
+    openLots: List<com.fintracker.tax.core.model.Lot>,
+    navMap: Map<String, com.fintracker.valuation.nav.NavEntry>,
+    today: LocalDate
+): List<HoldingDetailDto> {
+    val totalVal = openLots.fold(BigDecimal.ZERO) { acc, lot ->
+        val nav = navMap[lot.assetId]?.nav ?: lot.costPerUnit
+        acc.add(lot.remainingUnits.multiply(nav))
+    }
+
+    val grouped = openLots.groupBy { it.assetId }
+    val holdings = mutableListOf<HoldingDetailDto>()
+    fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+    for ((assetId, lots) in grouped) {
+        val assetName = lots.first().assetName
+        val category = TaxClassifier.detectCategory(assetId, assetName)
+
+        val thresholdDays = when (category) {
+            com.fintracker.tax.core.matcher.AssetCategory.EQUITY -> 365L
+            com.fintracker.tax.core.matcher.AssetCategory.GOLD_SILVER, com.fintracker.tax.core.matcher.AssetCategory.INTERNATIONAL, com.fintracker.tax.core.matcher.AssetCategory.SGB -> 730L
+            com.fintracker.tax.core.matcher.AssetCategory.DEBT_SPECIFIED_50AA -> -1L
+        }
+
+        val invested = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.totalCostBasis) }
+        val currentVal = lots.fold(BigDecimal.ZERO) { acc, l ->
+            val nav = navMap[assetId]?.nav ?: l.costPerUnit
+            acc.add(l.remainingUnits.multiply(nav))
+        }
+        val unrealizedGain = currentVal.subtract(invested)
+        val unrealizedGainPct = if (invested > BigDecimal.ZERO) {
+            unrealizedGain.multiply(BigDecimal("100")).divide(invested, 2, RoundingMode.HALF_UP).toPlainString()
+        } else "0.00"
+
+        val allocPct = if (totalVal > BigDecimal.ZERO) {
+            currentVal.multiply(BigDecimal("100")).divide(totalVal, 2, RoundingMode.HALF_UP).toPlainString()
+        } else "0.00"
+
+        val lotDtos = lots.map { l ->
+            val nav = navMap[assetId]?.nav ?: l.costPerUnit
+            val lotCurVal = l.remainingUnits.multiply(nav)
+            val lotGain = lotCurVal.subtract(l.totalCostBasis)
+            val hDays = l.acquisitionDate.daysUntil(today).toLong()
+            val daysToLtcg = if (thresholdDays > 0) (thresholdDays - hDays).coerceAtLeast(0) else -1L
+            val isLtcg = thresholdDays > 0 && hDays >= thresholdDays
+
+            OpenLotDto(
+                lotId = l.lotId,
+                acquisitionDate = l.acquisitionDate.toString(),
+                remainingUnits = l.remainingUnits.fmt(),
+                costPerUnit = l.costPerUnit.fmt(),
+                totalCostBasis = l.totalCostBasis.fmt(),
+                currentNav = nav.fmt(),
+                currentValue = lotCurVal.fmt(),
+                unrealizedGain = lotGain.fmt(),
+                holdingDays = hDays,
+                daysToLtcg = daysToLtcg,
+                isLtcg = isLtcg
+            )
+        }.sortedBy { it.acquisitionDate }
+
+        holdings.add(
+            HoldingDetailDto(
+                assetId = assetId,
+                assetName = assetName,
+                category = category.name,
+                investedValue = invested.fmt(),
+                currentValue = currentVal.fmt(),
+                unrealizedGain = unrealizedGain.fmt(),
+                unrealizedGainPct = unrealizedGainPct,
+                allocationPct = allocPct,
+                navStale = navMap[assetId] == null,
+                lots = lotDtos
+            )
+        )
+    }
+
+    return holdings.sortedByDescending { BigDecimal(it.currentValue) }
 }
 
 private fun getFiscalYearBounds(fiscalYear: String): Pair<LocalDate, LocalDate> {

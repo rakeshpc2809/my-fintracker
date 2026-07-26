@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Portfolio OS - Tax Cockpit (v2.0)</title>
+  <title>Portfolio OS - Tax Cockpit (v3.0)</title>
   <link rel="stylesheet" href="./src/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 </head>
 <body class="bg-obsidian">
   <div class="ambient-glow"></div>
@@ -22,7 +22,7 @@
         <div class="brand-title-group">
           <div class="brand-title-row">
             <h1 class="brand-title">Portfolio OS</h1>
-            <span class="v2-tag">v2.0</span>
+            <span class="v2-tag">v3.0 HLD</span>
           </div>
           <div class="fy-selector-row">
             <label for="fySelect">TAX PERIOD:</label>
@@ -94,12 +94,10 @@
         <div class="card-header">
           <h2>Portfolio Performance Curve</h2>
           <div class="chart-controls">
-            <span class="live-tag">LIVE INVESTED CAPITAL</span>
+            <span class="live-tag">HARDWARE-ACCELERATED ECHARTS</span>
           </div>
         </div>
-        <div class="canvas-wrapper" id="performanceWrapper">
-          <canvas id="performanceChart"></canvas>
-        </div>
+        <div class="canvas-wrapper" id="performanceChart" style="height: 280px; width: 100%;"></div>
       </div>
 
       <!-- Fund Allocation & Risk Exposure -->
@@ -108,9 +106,7 @@
           <h2>Fund Allocation</h2>
           <span class="live-tag">BY SCHEME</span>
         </div>
-        <div class="canvas-wrapper-small">
-          <canvas id="allocationChart"></canvas>
-        </div>
+        <div class="canvas-wrapper-small" id="allocationChart" style="height: 240px; width: 100%;"></div>
       </div>
 
       <div class="glass-card col-6">
@@ -118,9 +114,7 @@
           <h2>Risk Exposure</h2>
           <span class="live-tag">BY CATEGORY</span>
         </div>
-        <div class="canvas-wrapper-small">
-          <canvas id="categoryChart"></canvas>
-        </div>
+        <div class="canvas-wrapper-small" id="categoryChart" style="height: 240px; width: 100%;"></div>
       </div>
 
       <!-- Tax-Aware Rebalancing & Schedule FA Checklist -->
