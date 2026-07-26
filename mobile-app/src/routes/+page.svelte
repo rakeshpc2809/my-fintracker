@@ -31,6 +31,7 @@
     unrealizedGain: string;
     unrealizedGainPct: string;
     allocationPct: string;
+    navStale?: boolean;
     lots: OpenLot[];
   }
 
@@ -45,26 +46,32 @@
 
   let snapshot = $state<Snapshot | null>(null);
   let liveValuation = $state<number>(0);
-  let syncStatus = $state<string>('Initializing...');
-  let networkStatus = $state<string>('Checking network...');
+  let liveGain = $state<number>(0);
+  let ledgerSyncedTime = $state<string>('Never');
+  let navValuationTime = $state<string>('Offline');
+  let networkStatus = $state<string>('Checking...');
   let expandedAsset = $state<string | null>(null);
-  let desktopIp = $state<string>('192.168.1.13'); // Desktop LAN / Tailscale IP
+  let showSettings = $state<boolean>(false);
+  let desktopIp = $state<string>('192.168.1.13'); // Desktop IP or Tailscale MagicDNS
 
   async function triggerHaptic() {
     try {
       await Haptics.impact({ style: ImpactStyle.Light });
     } catch (e) {
-      // Browser fallback (ignored if unsupported)
+      // Browser fallback
     }
   }
 
   async function initNativeEnvironment() {
     try {
+      const savedIp = await Preferences.get({ key: 'desktop_ip' });
+      if (savedIp.value) desktopIp = savedIp.value;
+    } catch (e) {}
+
+    try {
       await StatusBar.setStyle({ style: Style.Dark });
       await StatusBar.setBackgroundColor({ color: '#0b0e17' });
-    } catch (e) {
-      // Running in browser
-    }
+    } catch (e) {}
 
     try {
       const status = await Network.getStatus();
@@ -74,7 +81,7 @@
         networkStatus = status.connected ? (status.connectionType === 'wifi' ? 'Wi-Fi' : 'Cellular') : 'Offline';
       });
     } catch (e) {
-      networkStatus = 'Web Network';
+      networkStatus = 'Web';
     }
 
     try {
@@ -83,16 +90,23 @@
           syncSnapshot();
         }
       });
-    } catch (e) {
-      // Web fallback
-    }
+    } catch (e) {}
+  }
+
+  async function saveSettings() {
+    triggerHaptic();
+    try {
+      await Preferences.set({ key: 'desktop_ip', value: desktopIp });
+    } catch (e) {}
+    showSettings = false;
+    syncSnapshot();
   }
 
   async function syncSnapshot() {
     triggerHaptic();
-    syncStatus = 'Syncing P2P...';
+    navValuationTime = 'Syncing...';
 
-    // 1. Try Desktop P2P Pull over LAN / Tailscale
+    // 1. Desktop P2P Pull
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -104,51 +118,82 @@
 
       if (res.ok) {
         snapshot = await res.json();
-        syncStatus = 'Synced via Desktop P2P';
+        const d = new Date(snapshot.generatedAt);
+        ledgerSyncedTime = `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
         await Preferences.set({ key: 'portfolio_snapshot', value: JSON.stringify(snapshot) });
+        await Preferences.set({ key: 'ledger_synced_time', value: ledgerSyncedTime });
         recalculateLiveNavs();
         return;
       }
-    } catch (e) {
-      // Desktop unreachable, use local cached snapshot
-    }
+    } catch (e) {}
 
-    // 2. Load from Native Capacitor Preferences
+    // 2. Cache Fallback
     try {
       const { value } = await Preferences.get({ key: 'portfolio_snapshot' });
+      const timeVal = await Preferences.get({ key: 'ledger_synced_time' });
       if (value) {
         snapshot = JSON.parse(value);
-        syncStatus = 'Offline Cache (AMFI Live)';
+        if (timeVal.value) ledgerSyncedTime = timeVal.value;
         recalculateLiveNavs();
         return;
       }
-    } catch (e) {
-      // Ignore
-    }
+    } catch (e) {}
 
-    syncStatus = 'Desktop Offline';
+    navValuationTime = 'Offline';
   }
 
   async function recalculateLiveNavs() {
     if (!snapshot || !snapshot.holdings) return;
 
+    const now = new Date();
+    navValuationTime = `Live (${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')})`;
+
     try {
       const navMap = await fetchLatestAmfiNavs();
-      let total = 0;
+      let totalValue = 0;
+      let totalInvested = 0;
 
       for (const h of snapshot.holdings) {
+        let holdingVal = 0;
+        let holdingInv = 0;
         const amfi = navMap.get(h.assetId);
-        if (amfi && amfi.nav) {
-          const val = parseFloat(h.investedValue) * (amfi.nav / parseFloat(h.lots[0]?.costPerUnit || '1'));
-          total += isNaN(val) ? parseFloat(h.currentValue) : val;
-        } else {
-          total += parseFloat(h.currentValue);
+        h.navStale = amfi == null;
+
+        const thresholdDays = h.category === 'EQUITY' ? 365 : (h.category === 'DEBT_SPECIFIED_50AA' ? -1 : 730);
+
+        for (const lot of h.lots) {
+          const units = parseFloat(lot.remainingUnits) || 0;
+          const costPerUnit = parseFloat(lot.costPerUnit) || 0;
+          const costBasis = units * costPerUnit;
+          holdingInv += costBasis;
+
+          const currentNav = amfi?.nav ?? (parseFloat(lot.currentNav) || costPerUnit);
+          const lotCurVal = units * currentNav;
+          holdingVal += lotCurVal;
+
+          // Recompute holding days & LTCG on device using device date
+          const acq = new Date(lot.acquisitionDate);
+          const diffDays = Math.floor((now.getTime() - acq.getTime()) / (1000 * 3600 * 24));
+          lot.holdingDays = diffDays;
+          lot.isLtcg = thresholdDays > 0 && diffDays >= thresholdDays;
+          lot.daysToLtcg = thresholdDays > 0 ? Math.max(0, thresholdDays - diffDays) : -1;
         }
+
+        h.currentValue = holdingVal.toFixed(2);
+        h.investedValue = holdingInv.toFixed(2);
+        const gain = holdingVal - holdingInv;
+        h.unrealizedGain = gain.toFixed(2);
+        h.unrealizedGainPct = holdingInv > 0 ? ((gain / holdingInv) * 100).toFixed(2) : '0.00';
+
+        totalValue += holdingVal;
+        totalInvested += holdingInv;
       }
 
-      liveValuation = total || parseFloat(snapshot.totalCurrentValue);
+      liveValuation = totalValue || parseFloat(snapshot.totalCurrentValue);
+      liveGain = totalValue - totalInvested;
     } catch (e) {
       liveValuation = parseFloat(snapshot.totalCurrentValue);
+      liveGain = parseFloat(snapshot.totalUnrealizedGain);
     }
   }
 
@@ -173,11 +218,19 @@
         <span class="m3-subtitle">Material 3 Expressive</span>
       </div>
     </div>
-    <div class="chip-group">
-      <span class="m3-chip m3-chip-tertiary">{networkStatus}</span>
-      <span class="m3-chip m3-chip-primary">{syncStatus}</span>
+    <div class="header-actions">
+      <button class="m3-icon-btn" onclick={() => { triggerHaptic(); showSettings = true; }} aria-label="Settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
     </div>
   </header>
+
+  <!-- Dual Freshness Timestamps Banner (Item 10) -->
+  <div class="freshness-banner">
+    <span>Ledger: <strong>{ledgerSyncedTime}</strong></span>
+    <span class="sep">•</span>
+    <span>NAV Valuation: <strong>{navValuationTime}</strong></span>
+  </div>
 
   {#if snapshot}
     <!-- Hero Net Worth Card (Material 3 Dynamic Expressive Card) -->
@@ -196,7 +249,7 @@
       <div class="hero-footer">
         <div class="hero-metric">
           <span class="lbl">Unrealized Gain</span>
-          <span class="val positive font-mono">+₹ {Math.round(parseFloat(snapshot.totalUnrealizedGain)).toLocaleString('en-IN')}</span>
+          <span class="val positive font-mono">+₹ {Math.round(liveGain || parseFloat(snapshot.totalUnrealizedGain)).toLocaleString('en-IN')}</span>
         </div>
         <div class="hero-metric">
           <span class="lbl">Invested Basis</span>
@@ -205,10 +258,10 @@
       </div>
     </section>
 
-    <!-- Asset Allocation Quick Glance -->
+    <!-- Holdings List -->
     <div class="section-title">
       <h2>Holdings & Open Lots ({snapshot.holdings.length})</h2>
-      <span class="sub">Material You Dynamic Lots</span>
+      <span class="sub">Dynamic Material 3 Lots</span>
     </div>
 
     <section class="holdings-stack">
@@ -216,7 +269,12 @@
         <div class="m3-card holding-card" onclick={() => toggleExpand(h.assetId)}>
           <div class="holding-main">
             <div class="holding-info">
-              <span class="m3-chip category-chip">{h.category.replace('_SPECIFIED_50AA', '')}</span>
+              <div class="chip-row">
+                <span class="m3-chip category-chip">{h.category.replace('_SPECIFIED_50AA', '')}</span>
+                {#if h.navStale}
+                  <span class="m3-chip stale-chip">Stale NAV</span>
+                {/if}
+              </div>
               <h3 class="holding-name">{h.assetName}</h3>
             </div>
             <div class="holding-valuation font-mono">
@@ -233,7 +291,7 @@
                 {#each h.lots as lot}
                   <div class="lot-card">
                     <div class="lot-row">
-                      <span class="date">{lot.acquisitionDate}</span>
+                      <span class="date">{lot.acquisitionDate} ({lot.holdingDays}d)</span>
                       <span class="term-badge {lot.isLtcg ? 'ltcg' : 'stcg'}">{lot.isLtcg ? 'LTCG' : 'STCG'}</span>
                     </div>
                     <div class="lot-row details font-mono">
@@ -256,6 +314,26 @@
       <button class="m3-btn" onclick={syncSnapshot}>Retry P2P Connection</button>
     </div>
   {/if}
+
+  <!-- Mobile Settings Drawer Modal (Item 12) -->
+  {#if showSettings}
+    <div class="modal-backdrop" onclick={() => showSettings = false}>
+      <div class="m3-card modal-content" onclick={e => e.stopPropagation()}>
+        <h3>Desktop P2P Settings</h3>
+        <p class="modal-sub">Enter Desktop LAN IP or Tailscale MagicDNS Hostname:</p>
+        
+        <div class="input-field">
+          <label for="desktopIpInput">Desktop Host IP / Domain:</label>
+          <input id="desktopIpInput" type="text" bind:value={desktopIp} class="m3-input" placeholder="e.g. 192.168.1.13 or cachyos.tailnet.ts.net">
+        </div>
+
+        <div class="modal-actions">
+          <button class="m3-btn secondary" onclick={() => showSettings = false}>Cancel</button>
+          <button class="m3-btn" onclick={saveSettings}>Save & Connect</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </main>
 
 <style>
@@ -268,7 +346,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    margin-bottom: 8px;
     padding-top: 8px;
   }
   .brand-group {
@@ -293,27 +371,29 @@
     color: var(--md-sys-color-on-surface-variant);
     font-weight: 500;
   }
-  .chip-group {
+  .freshness-banner {
+    background: var(--md-sys-color-surface-container-low);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 10px;
+    color: var(--md-sys-color-on-surface-variant);
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+  .freshness-banner strong {
+    color: var(--md-sys-color-primary);
+  }
+  .sep {
+    color: rgba(255, 255, 255, 0.2);
   }
   .hero-card {
     background: linear-gradient(145deg, #181d2e, #111524);
     border: 1px solid rgba(192, 132, 252, 0.2);
     position: relative;
     overflow: hidden;
-  }
-  .hero-card::after {
-    content: '';
-    position: absolute;
-    top: -40px;
-    right: -40px;
-    width: 120px;
-    height: 120px;
-    background: radial-gradient(circle, rgba(192, 132, 252, 0.25), transparent 70%);
-    pointer-events: none;
   }
   .hero-header {
     display: flex;
@@ -384,12 +464,22 @@
     align-items: flex-start;
     gap: 12px;
   }
+  .chip-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
   .category-chip {
     font-size: 9px;
     padding: 2px 8px;
-    margin-bottom: 6px;
     background: rgba(255, 255, 255, 0.06);
     color: var(--md-sys-color-tertiary);
+  }
+  .stale-chip {
+    font-size: 9px;
+    padding: 2px 8px;
+    background: rgba(248, 113, 113, 0.15);
+    color: var(--md-sys-color-negative);
   }
   .holding-name {
     font-size: 14px;
@@ -454,12 +544,54 @@
     background: rgba(192, 132, 252, 0.2);
     color: var(--md-sys-color-primary);
   }
-  .empty-card {
-    text-align: center;
-    padding: 40px 20px;
+  .modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 999;
   }
-  .pulse-icon {
-    font-size: 36px;
-    margin-bottom: 12px;
+  .modal-content {
+    width: 100%;
+    max-width: 400px;
+    margin: 0;
+  }
+  .modal-sub {
+    font-size: 12px;
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 6px 0 16px 0;
+  }
+  .input-field label {
+    font-size: 11px;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 6px;
+  }
+  .m3-input {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--md-sys-color-surface-container-low);
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: 12px;
+    color: var(--md-sys-color-on-surface);
+    font-family: monospace;
+    font-size: 13px;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .m3-btn.secondary {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--md-sys-color-on-surface);
   }
 </style>

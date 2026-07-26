@@ -161,6 +161,20 @@ data class RebalancePreviewDto(
 )
 
 @Serializable
+data class MobileSummaryResponse(
+    val generatedAt: String,
+    val fiscalYear: String,
+    val totalInvested: String,
+    val totalCurrentValue: String,
+    val totalUnrealizedGain: String,
+    val xirrPercentage: String,
+    val exemptionUsed: String,
+    val exemptionRemaining: String,
+    val exemptionLimit: String,
+    val holdingsCount: Int
+)
+
+@Serializable
 data class MobileSyncSnapshotDto(
     val generatedAt: String,
     val fiscalYear: String,
@@ -344,6 +358,56 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
     }
 
     route("/api/v1/portfolio") {
+        get("/mobile/summary") {
+            val fy = call.request.queryParameters["fy"] ?: "2026-27"
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, matchedLots) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy { it.isin!! }
+
+            val totalInvested = openLots.fold(BigDecimal.ZERO) { acc, lot -> acc.add(lot.totalCostBasis) }
+            val totalCurrentValue = openLots.fold(BigDecimal.ZERO) { acc, lot ->
+                val nav = navMap[lot.assetId]?.nav ?: lot.costPerUnit
+                acc.add(lot.remainingUnits.multiply(nav))
+            }
+            val totalGain = totalCurrentValue.subtract(totalInvested)
+
+            val cashflows = mutableListOf<CashFlow>()
+            for (event in allEvents) {
+                when (event.eventType) {
+                    EventType.ACQUISITION, EventType.SIP_INSTALMENT -> {
+                        cashflows.add(CashFlow(event.eventDate, event.grossAmount.negate()))
+                    }
+                    EventType.DISPOSAL -> {
+                        cashflows.add(CashFlow(event.eventDate, event.grossAmount))
+                    }
+                    else -> {}
+                }
+            }
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+            cashflows.add(CashFlow(today, totalCurrentValue))
+            val xirr = xirrEngine.calculateXirr(cashflows)
+
+            val exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy)
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            call.respond(
+                MobileSummaryResponse(
+                    generatedAt = Clock.System.now().toString(),
+                    fiscalYear = fy,
+                    totalInvested = totalInvested.fmt(),
+                    totalCurrentValue = totalCurrentValue.fmt(),
+                    totalUnrealizedGain = totalGain.fmt(),
+                    xirrPercentage = String.format("%.2f%%", xirr),
+                    exemptionUsed = exStatus.exemptionUsed,
+                    exemptionRemaining = exStatus.exemptionRemaining,
+                    exemptionLimit = exStatus.exemptionLimit,
+                    holdingsCount = openLots.map { it.assetId }.distinct().size
+                )
+            )
+        }
+
         get("/snapshot") {
             val fy = call.request.queryParameters["fy"] ?: "2026-27"
             val allEvents = eventStore.getAllEvents()

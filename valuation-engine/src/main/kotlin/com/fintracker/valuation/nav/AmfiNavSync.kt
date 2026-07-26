@@ -7,7 +7,6 @@ import kotlinx.datetime.toLocalDateTime
 import java.math.BigDecimal
 import java.net.URI
 import java.io.BufferedReader
-import java.io.InputStreamReader
 
 data class NavEntry(
     val schemeCode: String,
@@ -18,6 +17,14 @@ data class NavEntry(
 )
 
 class AmfiNavSync {
+
+    companion object {
+        @Volatile
+        private var cachedNavs: List<NavEntry>? = null
+        @Volatile
+        private var lastFetchTimeMs: Long = 0L
+        private const val CACHE_TTL_MS = 6 * 3600 * 1000L // 6 Hours TTL
+    }
 
     /**
      * Parses official AMFI EOD NAV text feed (Format: Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date)
@@ -54,13 +61,26 @@ class AmfiNavSync {
     }
 
     fun fetchLatestNavsFromAmfi(): List<NavEntry> {
+        val now = System.currentTimeMillis()
+        val currentCache = cachedNavs
+
+        if (currentCache != null && (now - lastFetchTimeMs) < CACHE_TTL_MS) {
+            return currentCache
+        }
+
         return try {
             val url = URI.create("https://www.amfiindia.com/spages/NAVAll.txt").toURL()
             val content = url.openStream().bufferedReader().use(BufferedReader::readText)
-            parseAmfiFeed(content)
+            val parsed = parseAmfiFeed(content)
+
+            if (parsed.isNotEmpty()) {
+                cachedNavs = parsed
+                lastFetchTimeMs = now
+            }
+            parsed
         } catch (e: Exception) {
-            // Graceful degradation: Return empty list if external feed is unreachable
-            emptyList()
+            // Graceful degradation: Return cached entries if fetch fails, or empty list
+            currentCache ?: emptyList()
         }
     }
 }

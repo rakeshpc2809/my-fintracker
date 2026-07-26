@@ -1,6 +1,9 @@
 package com.fintracker.valuation.advisor
 
+import com.fintracker.tax.core.matcher.AssetCategory
+import com.fintracker.tax.core.matcher.TaxClassifier
 import com.fintracker.tax.core.model.Lot
+import com.fintracker.tax.core.rules.TaxRulesLoader
 import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.daysUntil
@@ -38,6 +41,7 @@ object RebalanceEngine {
         targetAmount: BigDecimal,
         remainingExemption: BigDecimal = BigDecimal("125000.00")
     ): RebalancePreviewResult {
+        val rules = TaxRulesLoader.loadRules()
         var remainingTarget = targetAmount
         var unusedExemption = remainingExemption
         var totalGain = BigDecimal.ZERO
@@ -51,8 +55,17 @@ object RebalanceEngine {
             compareBy<Lot> { lot ->
                 val nav = navMap[lot.assetId] ?: lot.costPerUnit
                 val gainPerUnit = nav.subtract(lot.costPerUnit)
+                val category = TaxClassifier.detectCategory(lot.assetId, lot.assetName)
+                val holdingDays = lot.acquisitionDate.daysUntil(today).toLong()
+                val thresholdDays = when (category) {
+                    AssetCategory.EQUITY -> rules.equityLtcgThresholdDays
+                    AssetCategory.GOLD_SILVER, AssetCategory.INTERNATIONAL, AssetCategory.SGB -> rules.goldInternationalThresholdDays
+                    AssetCategory.DEBT_SPECIFIED_50AA -> -1L
+                }
+                val isLtcg = thresholdDays > 0 && holdingDays >= thresholdDays
+
                 if (gainPerUnit < BigDecimal.ZERO) 0
-                else if (lot.acquisitionDate.daysUntil(today).toLong() >= 365) 1
+                else if (isLtcg) 1
                 else 2
             }
         )
@@ -68,17 +81,28 @@ object RebalanceEngine {
             val costBasisSlice = unitsToSell.multiply(lot.costPerUnit)
             val gainSlice = redemptionFromLot.subtract(costBasisSlice)
 
-            var taxDrag = BigDecimal.ZERO
-            val isLtcg = lot.acquisitionDate.daysUntil(today).toLong() >= 365
+            val category = TaxClassifier.detectCategory(lot.assetId, lot.assetName)
+            val holdingDays = lot.acquisitionDate.daysUntil(today).toLong()
+            val thresholdDays = when (category) {
+                AssetCategory.EQUITY -> rules.equityLtcgThresholdDays
+                AssetCategory.GOLD_SILVER, AssetCategory.INTERNATIONAL, AssetCategory.SGB -> rules.goldInternationalThresholdDays
+                AssetCategory.DEBT_SPECIFIED_50AA -> -1L
+            }
+            val isLtcg = thresholdDays > 0 && holdingDays >= thresholdDays
 
+            var taxDrag = BigDecimal.ZERO
             if (gainSlice > BigDecimal.ZERO) {
                 if (isLtcg) {
                     val exemptPortion = gainSlice.min(unusedExemption)
                     val taxableGain = gainSlice.subtract(exemptPortion)
                     unusedExemption = unusedExemption.subtract(exemptPortion).max(BigDecimal.ZERO)
-                    taxDrag = taxableGain.multiply(BigDecimal("0.125"))
+                    taxDrag = taxableGain.multiply(rules.equityLtcgRate)
                 } else {
-                    taxDrag = gainSlice.multiply(BigDecimal("0.20"))
+                    val stcgRate = when (category) {
+                        AssetCategory.EQUITY -> rules.equityStcgRate
+                        else -> BigDecimal("0.30") // Slab rate default estimation
+                    }
+                    taxDrag = gainSlice.multiply(stcgRate)
                 }
             }
 

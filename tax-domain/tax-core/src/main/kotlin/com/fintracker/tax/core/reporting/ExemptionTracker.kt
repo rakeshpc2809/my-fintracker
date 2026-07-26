@@ -57,7 +57,8 @@ object ExemptionTracker {
         // LTCL offsets LTCG, remaining STCL offsets LTCG
         val netLtcgBeforeExemption = gLT.subtract(lLT).subtract(remainingStcl).max(BigDecimal.ZERO)
 
-        val exemptionLimit = BigDecimal("125000.00")
+        val rules = com.fintracker.tax.core.rules.TaxRulesLoader.loadRules(fiscalYear)
+        val exemptionLimit = rules.equityExemptionLimit
         val exemptionUsed = netLtcgBeforeExemption.min(exemptionLimit)
         val exemptionRemaining = exemptionLimit.subtract(exemptionUsed).max(BigDecimal.ZERO)
         val taxableLtcg = netLtcgBeforeExemption.subtract(exemptionUsed).max(BigDecimal.ZERO)
