@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Portfolio Cockpit & Tax Ledger</title>
+  <title>Portfolio OS - Tax Cockpit (v2.0)</title>
   <link rel="stylesheet" href="./src/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,10 +24,15 @@
             <option value="2025-26">FY 2025-26</option>
             <option value="2026-27" selected>FY 2026-27</option>
           </select>
-          <h1 class="brand-title">Portfolio Cockpit</h1>
+          <h1 class="brand-title">Portfolio OS <span class="v2-tag">v2.0</span></h1>
         </div>
       </div>
       <div class="header-actions">
+        <button id="exportZipBtn" class="upload-btn export-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Export ITR-2 CSV Bundle (.zip)
+        </button>
+
         <label for="fileUploadInput" class="upload-btn">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
           Upload CAS PDF / CSV
@@ -105,6 +110,50 @@
         </div>
         <div class="canvas-wrapper-small">
           <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Tax-Aware Rebalancing Calculator Widget -->
+      <div class="glass-card rebalance-section half-width">
+        <div class="card-header">
+          <h2>Tax-Aware Rebalancing Predictor</h2>
+          <span class="live-tag">TAX DRAG CALCULATOR</span>
+        </div>
+        <div class="rebalance-controls">
+          <label>Target Redemption Amount (INR):</label>
+          <div class="slider-box">
+            <input type="range" id="rebalanceSlider" min="25000" max="1000000" step="25000" value="100000">
+            <span class="font-mono slider-val" id="rebalanceSliderVal">₹ 1,00,000</span>
+          </div>
+          <div class="rebalance-summary-box">
+            <div class="reb-stat"><span class="lbl">Predicted Tax Drag:</span> <strong class="val font-mono highlight-cyan" id="rebTaxDrag">₹ 0</strong></div>
+            <div class="reb-stat"><span class="lbl">Effective Tax Rate:</span> <strong class="val font-mono" id="rebEffRate">0.00%</strong></div>
+            <div class="reb-stat"><span class="lbl">LTCG Tax-Free Harvested:</span> <strong class="val font-mono" id="rebLtcgHarvested">₹ 0</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Schedule FA Pre-Flight Compliance Checklist -->
+      <div class="glass-card compliance-section half-width">
+        <div class="card-header">
+          <h2>Schedule FA Pre-Flight Checklist</h2>
+          <span class="live-tag">FOREIGN ASSETS</span>
+        </div>
+        <div class="compliance-list">
+          <div class="compliance-item valid">
+            <span class="check-icon">✓</span>
+            <div class="comp-text">
+              <div class="comp-title">Foreign Entity Identification & Address</div>
+              <div class="comp-desc">International ETF ISINs mapped to US jurisdiction.</div>
+            </div>
+          </div>
+          <div class="compliance-item valid">
+            <span class="check-icon">✓</span>
+            <div class="comp-text">
+              <div class="comp-title">Peak Intra-Year Valuation INR</div>
+              <div class="comp-desc">SBI Telegraphic Transfer conversion applied to peak balances.</div>
+            </div>
+          </div>
         </div>
       </div>
 

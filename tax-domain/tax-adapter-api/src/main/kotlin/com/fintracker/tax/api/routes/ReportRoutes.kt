@@ -5,12 +5,19 @@ import com.fintracker.tax.core.matcher.TaxClassifier
 import com.fintracker.tax.core.model.EventType
 import com.fintracker.tax.core.ports.EventStorePort
 import com.fintracker.tax.core.reporting.ExemptionTracker
+import com.fintracker.tax.core.reporting.Itr2CsvExporter
 import com.fintracker.tax.core.reporting.TaxReportExporter
+import com.fintracker.valuation.advisor.RebalanceEngine
 import com.fintracker.valuation.nav.AmfiNavSync
 import com.fintracker.valuation.xirr.CashFlow
 import com.fintracker.valuation.xirr.XirrEngine
+import io.ktor.http.ContentDisposition
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.route
@@ -20,8 +27,11 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.daysUntil
 import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.Serializable
+import java.io.ByteArrayOutputStream
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 @Serializable
 data class PortfolioSummaryResponse(
@@ -130,6 +140,27 @@ data class PerformancePoint(
     val valuation: String
 )
 
+@Serializable
+data class RebalanceLotDto(
+    val assetName: String,
+    val unitsToSell: String,
+    val redemptionProceeds: String,
+    val estimatedGain: String,
+    val taxTerm: String,
+    val estimatedTaxDrag: String
+)
+
+@Serializable
+data class RebalancePreviewDto(
+    val targetRedemptionAmount: String,
+    val actualRedemptionAmount: String,
+    val totalEstimatedGain: String,
+    val totalTaxDrag: String,
+    val effectiveTaxRatePct: String,
+    val ltcgExemptionHarvested: String,
+    val selectedLots: List<RebalanceLotDto>
+)
+
 fun Route.reportRoutes(eventStore: EventStorePort) {
     val fifoMatcher = FifoMatcher()
     val amfiSync = AmfiNavSync()
@@ -143,6 +174,38 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
             val report = TaxReportExporter.generateItr2Report(matchedLots, fy)
 
             call.respond(report)
+        }
+
+        get("/export/itr2/zip") {
+            val fy = call.request.queryParameters["fy"] ?: "2026-27"
+            val allEvents = eventStore.getAllEvents()
+            val (_, matchedLots) = fifoMatcher.processEvents(allEvents)
+            val assetNameMap = allEvents.associate { it.assetId to it.assetName }
+
+            val csv112a = Itr2CsvExporter.generateSchedule112aCsv(matchedLots, fy, assetNameMap)
+            val csvStcg = Itr2CsvExporter.generateScheduleCgStcgCsv(matchedLots, fy, assetNameMap)
+            val csvFa = Itr2CsvExporter.generateScheduleFaCsv(allEvents)
+
+            val baos = ByteArrayOutputStream()
+            ZipOutputStream(baos).use { zos ->
+                zos.putNextEntry(ZipEntry("schedule_112a.csv"))
+                zos.write(csv112a.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+
+                zos.putNextEntry(ZipEntry("schedule_cg_stcg.csv"))
+                zos.write(csvStcg.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+
+                zos.putNextEntry(ZipEntry("schedule_fa.csv"))
+                zos.write(csvFa.toByteArray(Charsets.UTF_8))
+                zos.closeEntry()
+            }
+
+            call.response.header(
+                HttpHeaders.ContentDisposition,
+                ContentDisposition.Attachment.withParameter(ContentDisposition.Parameters.FileName, "itr2_exports_$fy.zip").toString()
+            )
+            call.respondBytes(baos.toByteArray(), io.ktor.http.ContentType.Application.Zip)
         }
 
         get("/exemption-status") {
@@ -204,7 +267,7 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
                 val thresholdDays = when (category) {
                     com.fintracker.tax.core.matcher.AssetCategory.EQUITY -> 365L
                     com.fintracker.tax.core.matcher.AssetCategory.GOLD_SILVER, com.fintracker.tax.core.matcher.AssetCategory.INTERNATIONAL, com.fintracker.tax.core.matcher.AssetCategory.SGB -> 730L
-                    com.fintracker.tax.core.matcher.AssetCategory.DEBT_SPECIFIED_50AA -> -1L // Always STCG
+                    com.fintracker.tax.core.matcher.AssetCategory.DEBT_SPECIFIED_50AA -> -1L
                 }
 
                 if (thresholdDays > 0) {
@@ -271,6 +334,47 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
     }
 
     route("/api/v1/portfolio") {
+        get("/rebalance-preview") {
+            val amountStr = call.request.queryParameters["amount"] ?: "100000"
+            val targetAmount = BigDecimal(amountStr)
+
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, matchedLots) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy({ it.isin!! }, { it.nav })
+
+            val fy = call.request.queryParameters["fy"] ?: "2026-27"
+            val status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy)
+            val remExemption = BigDecimal(status.exemptionRemaining)
+
+            val result = RebalanceEngine.calculateRebalancePreview(openLots, navMap, targetAmount, remExemption)
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val selectedDtos = result.selectedLots.map { s ->
+                RebalanceLotDto(
+                    assetName = s.assetName,
+                    unitsToSell = s.unitsToSell.fmt(),
+                    redemptionProceeds = s.redemptionProceeds.fmt(),
+                    estimatedGain = s.estimatedGain.fmt(),
+                    taxTerm = s.taxTerm,
+                    estimatedTaxDrag = s.estimatedTaxDrag.fmt()
+                )
+            }
+
+            call.respond(
+                RebalancePreviewDto(
+                    targetRedemptionAmount = result.targetRedemptionAmount.fmt(),
+                    actualRedemptionAmount = result.actualRedemptionAmount.fmt(),
+                    totalEstimatedGain = result.totalEstimatedGain.fmt(),
+                    totalTaxDrag = result.totalTaxDrag.fmt(),
+                    effectiveTaxRatePct = "${result.effectiveTaxRatePct}%",
+                    ltcgExemptionHarvested = result.ltcgExemptionHarvested.fmt(),
+                    selectedLots = selectedDtos
+                )
+            )
+        }
+
         get("/summary") {
             val allEvents = eventStore.getAllEvents()
             val (openLots, _) = fifoMatcher.processEvents(allEvents)

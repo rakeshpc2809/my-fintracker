@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":tax-core"))
     implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.0")
     testImplementation(kotlin("test"))
 }

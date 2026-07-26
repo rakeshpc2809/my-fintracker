@@ -13,11 +13,33 @@ document.addEventListener('DOMContentLoaded', () => {
       currentFy = fySelect.value;
       fetchTaxMetrics();
       fetchRealizedLog();
+      fetchRebalancePreview();
     });
   }
 
   fetchLiveMetrics();
 
+  // Export ZIP button listener
+  const exportZipBtn = document.getElementById('exportZipBtn');
+  if (exportZipBtn) {
+    exportZipBtn.addEventListener('click', () => {
+      window.location.href = `${API_BASE}/tax/export/itr2/zip?fy=${currentFy}`;
+      showToast(`Generating ITR-2 CSV Bundle (.zip) for ${currentFy}...`, 'success');
+    });
+  }
+
+  // Rebalance Slider listener
+  const slider = document.getElementById('rebalanceSlider');
+  const sliderVal = document.getElementById('rebalanceSliderVal');
+  if (slider && sliderVal) {
+    slider.addEventListener('input', () => {
+      const val = parseInt(slider.value) || 100000;
+      sliderVal.textContent = `₹ ${val.toLocaleString('en-IN')}`;
+      fetchRebalancePreview(val);
+    });
+  }
+
+  // File Upload listener
   const fileInput = document.getElementById('fileUploadInput');
   if (fileInput) {
     fileInput.addEventListener('change', async (e) => {
@@ -112,11 +134,16 @@ async function fetchLiveMetrics() {
       renderHoldingsTable(holdings);
     }
 
-    // 7. Decision Radar (Tax Harvest + Maturation Ladder)
+    // 7. Decision Radar
     fetchDecisionRadar();
 
     // 8. Realized Disposals Log
     fetchRealizedLog();
+
+    // 9. Rebalance Preview
+    const slider = document.getElementById('rebalanceSlider');
+    const amt = slider ? slider.value : 100000;
+    fetchRebalancePreview(amt);
   } catch (err) {
     console.log('Ktor API offline or starting up, using cached cockpit metrics.');
   }
@@ -137,6 +164,36 @@ async function fetchTaxMetrics() {
     }
   } catch (e) {
     console.error('Error fetching tax metrics:', e);
+  }
+}
+
+async function fetchRebalancePreview(amount = 100000) {
+  try {
+    const res = await fetch(`${API_BASE}/portfolio/rebalance-preview?amount=${amount}&fy=${currentFy}`);
+    if (res.ok) {
+      const data = await res.json();
+      updateRebalanceSummary(data);
+    }
+  } catch (e) {
+    console.error('Error fetching rebalance preview:', e);
+  }
+}
+
+function updateRebalanceSummary(data) {
+  const rebTaxDrag = document.getElementById('rebTaxDrag');
+  const rebEffRate = document.getElementById('rebEffRate');
+  const rebLtcgHarvested = document.getElementById('rebLtcgHarvested');
+
+  if (rebTaxDrag && data.totalTaxDrag) {
+    const drag = Math.round(parseFloat(data.totalTaxDrag) || 0);
+    rebTaxDrag.textContent = `₹ ${drag.toLocaleString('en-IN')}`;
+  }
+  if (rebEffRate && data.effectiveTaxRatePct) {
+    rebEffRate.textContent = data.effectiveTaxRatePct;
+  }
+  if (rebLtcgHarvested && data.ltcgExemptionHarvested) {
+    const harvested = Math.round(parseFloat(data.ltcgExemptionHarvested) || 0);
+    rebLtcgHarvested.textContent = `₹ ${harvested.toLocaleString('en-IN')}`;
   }
 }
 
@@ -226,7 +283,6 @@ function renderDecisionRadar(opportunities, ladder) {
 
   let html = '';
 
-  // Render Tax Loss Harvesting Opportunities
   if (opportunities && opportunities.length > 0) {
     for (const opp of opportunities.slice(0, 2)) {
       const loss = Math.round(parseFloat(opp.potentialHarvestableLoss) || 0);
@@ -243,7 +299,6 @@ function renderDecisionRadar(opportunities, ladder) {
     }
   }
 
-  // Render LTCG Maturation Ladder Opportunities
   if (ladder && ladder.length > 0) {
     for (const mat of ladder.slice(0, 2)) {
       html += `
