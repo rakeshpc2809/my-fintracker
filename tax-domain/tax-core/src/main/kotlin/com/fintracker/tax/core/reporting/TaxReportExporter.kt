@@ -5,6 +5,7 @@ import com.fintracker.tax.core.model.TaxTerm
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
 import java.math.BigDecimal
+import java.math.RoundingMode
 
 @Serializable
 data class Itr2ScheduleCgReport(
@@ -13,6 +14,7 @@ data class Itr2ScheduleCgReport(
     val totalCostBasis: String,
     val totalRealizedStcg: String,
     val totalRealizedLtcg: String,
+    val netTaxableStcg: String,
     val ltcgExemptionUsed: String,
     val netTaxableLtcg: String,
     val matchedLotCount: Int
@@ -23,21 +25,19 @@ object TaxReportExporter {
     fun generateItr2Report(matchedLots: List<MatchedLot>, fiscalYear: String): Itr2ScheduleCgReport {
         val (startDate, endDate) = getFiscalYearBounds(fiscalYear)
 
-        // Filter matched lots strictly by disposal date falling in the requested fiscal year
         val fyLots = matchedLots.filter { it.disposalDate >= startDate && it.disposalDate <= endDate }
 
         val totalSaleProceeds = fyLots.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.saleProceeds) }
         val totalCostBasis = fyLots.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.costBasis) }
 
-        val stcgLots = fyLots.filter { it.taxTerm == TaxTerm.SHORT_TERM }
-        val ltcgLots = fyLots.filter { it.taxTerm == TaxTerm.LONG_TERM }
-
-        val totalStcg = stcgLots.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain) }
-        val totalLtcg = ltcgLots.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain) }
-
         val exemptionStatus = ExemptionTracker.calculateExemptionStatus(fyLots, fiscalYear)
 
-        fun BigDecimal.fmt() = this.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
+        val totalStcg = fyLots.filter { it.taxTerm == TaxTerm.SHORT_TERM }
+            .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain) }
+        val totalLtcg = fyLots.filter { it.taxTerm == TaxTerm.LONG_TERM }
+            .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain) }
+
+        fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
 
         return Itr2ScheduleCgReport(
             fiscalYear = fiscalYear,
@@ -45,6 +45,7 @@ object TaxReportExporter {
             totalCostBasis = totalCostBasis.fmt(),
             totalRealizedStcg = totalStcg.fmt(),
             totalRealizedLtcg = totalLtcg.fmt(),
+            netTaxableStcg = exemptionStatus.netStcg,
             ltcgExemptionUsed = exemptionStatus.exemptionUsed,
             netTaxableLtcg = exemptionStatus.taxableLtcg,
             matchedLotCount = fyLots.size

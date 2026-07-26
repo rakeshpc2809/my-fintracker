@@ -6,13 +6,15 @@ import com.fintracker.tax.core.ports.EventStorePort
 import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDate
 import java.math.BigDecimal
-import java.security.MessageDigest
 import java.sql.Connection
 import java.sql.DriverManager
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
 class DuckDbEventStore(private val dbPath: String = System.getenv("DUCKDB_PATH") ?: "tax_ledger.duckdb") : EventStorePort {
 
     private val jdbcUrl: String
+    private val hmacSecret: String = System.getenv("LEDGER_HMAC_SECRET") ?: "fintracker-cachyos-default-key-2026"
 
     init {
         Class.forName("org.duckdb.DuckDBDriver")
@@ -67,9 +69,11 @@ class DuckDbEventStore(private val dbPath: String = System.getenv("DUCKDB_PATH")
     }
 
     private fun computeHash(prevHash: String, event: TaxEvent): String {
-        val raw = "$prevHash|${event.id}|${event.assetId}|${event.eventType}|${event.eventDate}|${event.units}|${event.grossAmount}|${event.sourceDocumentId}"
-        val digest = MessageDigest.getInstance("SHA-256")
-        val bytes = digest.digest(raw.toByteArray(Charsets.UTF_8))
+        val raw = "$prevHash|${event.id}|${event.assetId}|${event.eventType}|${event.eventDate}|${event.units.toPlainString()}|${event.grossAmount.toPlainString()}|${event.sourceDocumentId}"
+        val mac = Mac.getInstance("HmacSHA256")
+        val secretKey = SecretKeySpec(hmacSecret.toByteArray(Charsets.UTF_8), "HmacSHA256")
+        mac.init(secretKey)
+        val bytes = mac.doFinal(raw.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
     }
 
@@ -86,7 +90,7 @@ class DuckDbEventStore(private val dbPath: String = System.getenv("DUCKDB_PATH")
                 stmt.setString(4, event.grossAmount.toPlainString())
                 val rs = stmt.executeQuery()
                 if (rs.next()) {
-                    return rs.getString("event_hash") // Skip duplicate event
+                    return rs.getString("event_hash")
                 }
             }
 

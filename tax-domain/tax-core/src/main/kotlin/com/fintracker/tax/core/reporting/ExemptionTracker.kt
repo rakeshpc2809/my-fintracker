@@ -5,11 +5,17 @@ import com.fintracker.tax.core.model.TaxTerm
 import kotlinx.datetime.LocalDate
 import kotlinx.serialization.Serializable
 import java.math.BigDecimal
+import java.math.RoundingMode
 
 @Serializable
 data class ExemptionStatus(
     val fiscalYear: String,
-    val totalEquityLtcgRealized: String,
+    val grossLtcg: String,
+    val grossLtcl: String,
+    val grossStcg: String,
+    val grossStcl: String,
+    val netStcg: String,
+    val netLtcgBeforeExemption: String,
     val exemptionLimit: String = "125000.00",
     val exemptionUsed: String,
     val exemptionRemaining: String,
@@ -21,26 +27,51 @@ object ExemptionTracker {
     fun calculateExemptionStatus(matchedLots: List<MatchedLot>, fiscalYear: String): ExemptionStatus {
         val (startDate, endDate) = getFiscalYearBounds(fiscalYear)
 
-        val fyLtcgLots = matchedLots.filter {
+        val stgLots = matchedLots.filter {
+            it.taxTerm == TaxTerm.SHORT_TERM &&
+            it.disposalDate >= startDate &&
+            it.disposalDate <= endDate
+        }
+
+        val ltgLots = matchedLots.filter {
             it.taxTerm == TaxTerm.LONG_TERM &&
             it.disposalDate >= startDate &&
             it.disposalDate <= endDate
         }
 
-        val totalEquityLtcg = fyLtcgLots.fold(BigDecimal.ZERO) { acc, m ->
-            if (m.realizedGain > BigDecimal.ZERO) acc.add(m.realizedGain) else acc
-        }
+        // Section 70 & 74 Statutory Losses
+        val gST = stgLots.filter { it.realizedGain > BigDecimal.ZERO }
+            .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain) }
+        val lST = stgLots.filter { it.realizedGain < BigDecimal.ZERO }
+            .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain.abs()) }
+
+        val gLT = ltgLots.filter { it.realizedGain > BigDecimal.ZERO }
+            .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain) }
+        val lLT = ltgLots.filter { it.realizedGain < BigDecimal.ZERO }
+            .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain.abs()) }
+
+        // STCL offsets STCG first
+        val netStcg = gST.subtract(lST).max(BigDecimal.ZERO)
+        val remainingStcl = lST.subtract(gST).max(BigDecimal.ZERO)
+
+        // LTCL offsets LTCG, remaining STCL offsets LTCG
+        val netLtcgBeforeExemption = gLT.subtract(lLT).subtract(remainingStcl).max(BigDecimal.ZERO)
 
         val exemptionLimit = BigDecimal("125000.00")
-        val exemptionUsed = totalEquityLtcg.min(exemptionLimit)
+        val exemptionUsed = netLtcgBeforeExemption.min(exemptionLimit)
         val exemptionRemaining = exemptionLimit.subtract(exemptionUsed).max(BigDecimal.ZERO)
-        val taxableLtcg = totalEquityLtcg.subtract(exemptionUsed).max(BigDecimal.ZERO)
+        val taxableLtcg = netLtcgBeforeExemption.subtract(exemptionUsed).max(BigDecimal.ZERO)
 
-        fun BigDecimal.fmt() = this.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString()
+        fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
 
         return ExemptionStatus(
             fiscalYear = fiscalYear,
-            totalEquityLtcgRealized = totalEquityLtcg.fmt(),
+            grossLtcg = gLT.fmt(),
+            grossLtcl = lLT.fmt(),
+            grossStcg = gST.fmt(),
+            grossStcl = lST.fmt(),
+            netStcg = netStcg.fmt(),
+            netLtcgBeforeExemption = netLtcgBeforeExemption.fmt(),
             exemptionLimit = exemptionLimit.fmt(),
             exemptionUsed = exemptionUsed.fmt(),
             exemptionRemaining = exemptionRemaining.fmt(),
