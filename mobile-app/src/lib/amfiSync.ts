@@ -1,3 +1,5 @@
+import { CapacitorHttp } from '@capacitor/core';
+
 export interface NavEntry {
   schemeCode: string;
   isin: string;
@@ -11,12 +13,25 @@ export async function fetchLatestAmfiNavs(): Promise<Map<string, NavEntry>> {
   const navMap = new Map<string, NavEntry>();
 
   try {
-    const res = await fetch(url);
-    if (!res.ok) return navMap;
+    let text = '';
 
-    const text = await res.text();
+    // Native CapacitorHttp executes network call at Android Java layer, bypassing CORS
+    try {
+      const response = await CapacitorHttp.get({ url });
+      if (response.status === 200 && response.data) {
+        text = typeof response.data === 'string' ? response.data : String(response.data);
+      }
+    } catch (capErr) {
+      // Browser fallback if CapacitorHttp plugin fails
+      const res = await fetch(url);
+      if (res.ok) {
+        text = await res.text();
+      }
+    }
+
+    if (!text) return navMap;
+
     const lines = text.split('\n');
-
     for (const line of lines) {
       const parts = line.split(';');
       if (parts.length >= 6) {

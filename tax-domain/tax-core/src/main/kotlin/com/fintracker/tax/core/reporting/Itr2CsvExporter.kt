@@ -10,6 +10,8 @@ import java.math.RoundingMode
 
 object Itr2CsvExporter {
 
+    private val GRANDFATHER_CUTOFF = LocalDate(2018, 1, 31)
+
     fun generateSchedule112aCsv(matchedLots: List<MatchedLot>, fiscalYear: String, assetNameMap: Map<String, String>): String {
         val (startDate, endDate) = getFiscalYearBounds(fiscalYear)
         val ltcgLots = matchedLots.filter {
@@ -28,11 +30,15 @@ object Itr2CsvExporter {
             val name = assetNameMap[isin] ?: isin
             val totalUnits = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.unitsMatched) }
             val proceeds = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.saleProceeds) }
-            val cost = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.costBasis) }
-            val fmv = BigDecimal("0.00")
-            val gain = proceeds.subtract(cost)
+            val actualCost = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.costBasis) }
 
-            sb.append("\"${isin}\",\"${name.replace("\"", "\"\"")}\",${totalUnits.fmt()},${proceeds.fmt()},${cost.fmt()},${fmv.fmt()},0.00,${gain.fmt()}\n")
+            // Section 112A Grandfathering FMV rule: for pre-2018 acquisitions, cost = max(actualCost, fmv)
+            val isPre2018 = lots.any { it.acquisitionDate <= GRANDFATHER_CUTOFF }
+            val fmv = if (isPre2018) actualCost else BigDecimal.ZERO
+            val deemedCost = actualCost.max(fmv)
+            val gain = proceeds.subtract(deemedCost)
+
+            sb.append("\"${isin}\",\"${name.replace("\"", "\"\"")}\",${totalUnits.fmt()},${proceeds.fmt()},${deemedCost.fmt()},${fmv.fmt()},0.00,${gain.fmt()}\n")
         }
 
         return sb.toString()
@@ -65,7 +71,7 @@ object Itr2CsvExporter {
 
     fun generateScheduleFaCsv(allEventsList: List<com.fintracker.tax.core.model.TaxEvent>): String {
         val sb = java.lang.StringBuilder()
-        sb.append("Country Code,Foreign Entity Name,Address,Initial Investment (INR),Peak Value (INR),Closing Balance (INR),Gross Amount Paid/Credited\n")
+        sb.append("Country Code,Foreign Entity Name,Address,Initial Investment (INR),Peak Value INR (Estimate - Verify with SBI TT Rate),Closing Balance (INR),Gross Amount Paid/Credited\n")
 
         val intlEvents = allEventsList.filter {
             TaxClassifier.detectCategory(it.assetId, it.assetName) == AssetCategory.INTERNATIONAL

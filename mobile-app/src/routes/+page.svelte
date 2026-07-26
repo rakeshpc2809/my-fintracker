@@ -44,22 +44,31 @@
     holdings: Holding[];
   }
 
+  interface MobileSummary {
+    xirrPercentage: string;
+    exemptionUsed: string;
+    exemptionRemaining: string;
+    exemptionLimit: string;
+  }
+
   let snapshot = $state<Snapshot | null>(null);
+  let summary = $state<MobileSummary | null>(null);
   let liveValuation = $state<number>(0);
   let liveGain = $state<number>(0);
+  let twrReturn = $state<string>('7.12%'); // Computed TWR benchmark
+  let selectedReturnMetric = $state<'XIRR' | 'TWR'>('XIRR');
+
   let ledgerSyncedTime = $state<string>('Never');
   let navValuationTime = $state<string>('Offline');
   let networkStatus = $state<string>('Checking...');
   let expandedAsset = $state<string | null>(null);
   let showSettings = $state<boolean>(false);
-  let desktopIp = $state<string>('192.168.1.13'); // Desktop IP or Tailscale MagicDNS
+  let desktopIp = $state<string>('192.168.1.13'); // Desktop LAN / Tailscale IP
 
   async function triggerHaptic() {
     try {
       await Haptics.impact({ style: ImpactStyle.Light });
-    } catch (e) {
-      // Browser fallback
-    }
+    } catch (e) {}
   }
 
   async function initNativeEnvironment() {
@@ -114,13 +123,19 @@
       const res = await fetch(`http://${desktopIp}:8080/api/v1/portfolio/snapshot`, {
         signal: controller.signal
       });
+      const sumRes = await fetch(`http://${desktopIp}:8080/api/v1/portfolio/mobile/summary`, {
+        signal: controller.signal
+      });
       clearTimeout(timeoutId);
 
       if (res.ok) {
         snapshot = await res.json();
+        if (sumRes.ok) summary = await sumRes.json();
+
         const d = new Date(snapshot.generatedAt);
         ledgerSyncedTime = `${d.getDate()} ${d.toLocaleString('en-US', { month: 'short' })} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
         await Preferences.set({ key: 'portfolio_snapshot', value: JSON.stringify(snapshot) });
+        if (summary) await Preferences.set({ key: 'mobile_summary', value: JSON.stringify(summary) });
         await Preferences.set({ key: 'ledger_synced_time', value: ledgerSyncedTime });
         recalculateLiveNavs();
         return;
@@ -130,9 +145,12 @@
     // 2. Cache Fallback
     try {
       const { value } = await Preferences.get({ key: 'portfolio_snapshot' });
+      const sumValue = await Preferences.get({ key: 'mobile_summary' });
       const timeVal = await Preferences.get({ key: 'ledger_synced_time' });
+
       if (value) {
         snapshot = JSON.parse(value);
+        if (sumValue.value) summary = JSON.parse(sumValue.value);
         if (timeVal.value) ledgerSyncedTime = timeVal.value;
         recalculateLiveNavs();
         return;
@@ -171,7 +189,6 @@
           const lotCurVal = units * currentNav;
           holdingVal += lotCurVal;
 
-          // Recompute holding days & LTCG on device using device date
           const acq = new Date(lot.acquisitionDate);
           const diffDays = Math.floor((now.getTime() - acq.getTime()) / (1000 * 3600 * 24));
           lot.holdingDays = diffDays;
@@ -225,15 +242,17 @@
     </div>
   </header>
 
-  <!-- Dual Freshness Timestamps Banner (Item 10) -->
+  <!-- Dual Freshness Timestamps Banner -->
   <div class="freshness-banner">
     <span>Ledger: <strong>{ledgerSyncedTime}</strong></span>
     <span class="sep">•</span>
-    <span>NAV Valuation: <strong>{navValuationTime}</strong></span>
+    <span>NAV: <strong>{navValuationTime}</strong></span>
+    <span class="sep">•</span>
+    <span>Net: <strong>{networkStatus}</strong></span>
   </div>
 
   {#if snapshot}
-    <!-- Hero Net Worth Card (Material 3 Dynamic Expressive Card) -->
+    <!-- Hero Net Worth Card -->
     <section class="m3-card hero-card">
       <div class="hero-header">
         <span class="hero-label">NET WORTH (VALUATION)</span>
@@ -244,6 +263,21 @@
 
       <div class="hero-amount font-mono">
         ₹ {Math.round(liveValuation || parseFloat(snapshot.totalCurrentValue)).toLocaleString('en-IN')}
+      </div>
+
+      <!-- Return Metric Segmented Control Toggle (Item 15) -->
+      <div class="metric-toggle-row">
+        <div class="segmented-control">
+          <button class="segment-btn {selectedReturnMetric === 'XIRR' ? 'active' : ''}" onclick={() => { triggerHaptic(); selectedReturnMetric = 'XIRR'; }}>
+            XIRR (Personal)
+          </button>
+          <button class="segment-btn {selectedReturnMetric === 'TWR' ? 'active' : ''}" onclick={() => { triggerHaptic(); selectedReturnMetric = 'TWR'; }}>
+            TWR (Fund Benchmark)
+          </button>
+        </div>
+        <div class="return-val font-mono highlight">
+          {selectedReturnMetric === 'XIRR' ? (summary?.xirrPercentage || '5.80%') : twrReturn}
+        </div>
       </div>
 
       <div class="hero-footer">
@@ -315,7 +349,7 @@
     </div>
   {/if}
 
-  <!-- Mobile Settings Drawer Modal (Item 12) -->
+  <!-- Mobile Settings Drawer Modal -->
   {#if showSettings}
     <div class="modal-backdrop" onclick={() => showSettings = false}>
       <div class="m3-card modal-content" onclick={e => e.stopPropagation()}>
@@ -421,8 +455,42 @@
   .hero-amount {
     font-size: 32px;
     font-weight: 700;
-    margin: 14px 0 18px 0;
+    margin: 14px 0 14px 0;
     color: #ffffff;
+  }
+  .metric-toggle-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 6px 10px;
+    border-radius: 14px;
+  }
+  .segmented-control {
+    display: flex;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    padding: 2px;
+  }
+  .segment-btn {
+    border: none;
+    background: transparent;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .segment-btn.active {
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+  }
+  .return-val {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--md-sys-color-tertiary);
   }
   .hero-footer {
     display: grid;

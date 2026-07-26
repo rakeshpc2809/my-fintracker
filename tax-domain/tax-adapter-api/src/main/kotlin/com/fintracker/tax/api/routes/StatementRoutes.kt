@@ -6,6 +6,8 @@ import com.fintracker.tax.core.ports.EventStorePort
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.PartData
 import io.ktor.http.content.forEachPart
+import io.ktor.utils.io.core.readBytes
+import io.ktor.utils.io.readRemaining
 import io.ktor.http.content.streamProvider
 import io.ktor.server.application.call
 import io.ktor.server.request.receiveMultipart
@@ -41,6 +43,7 @@ fun Route.statementRoutes(eventStore: EventStorePort) {
         post("/upload") {
             var fileName = ""
             var password = ""
+            var declaredClosingUnitsStr: String? = null
             var fileBytes: ByteArray? = null
 
             val multipart = call.receiveMultipart()
@@ -48,11 +51,13 @@ fun Route.statementRoutes(eventStore: EventStorePort) {
                 when (part) {
                     is PartData.FileItem -> {
                         fileName = part.originalFileName ?: "statement.pdf"
-                        fileBytes = part.streamProvider().readBytes()
+                        fileBytes = part.provider().readRemaining().readBytes()
                     }
                     is PartData.FormItem -> {
                         if (part.name == "password") {
                             password = part.value
+                        } else if (part.name == "closingUnits" || part.name == "declaredClosingUnits") {
+                            declaredClosingUnitsStr = part.value
                         }
                     }
                     else -> {}
@@ -79,6 +84,10 @@ fun Route.statementRoutes(eventStore: EventStorePort) {
                 if (password.isNotEmpty()) {
                     args.add("--password")
                     args.add(password)
+                }
+                if (!declaredClosingUnitsStr.isNullOrEmpty()) {
+                    args.add("--closing-units")
+                    args.add(declaredClosingUnitsStr!!)
                 }
 
                 val pb = ProcessBuilder(args).directory(File("parsers"))
@@ -111,6 +120,30 @@ fun Route.statementRoutes(eventStore: EventStorePort) {
                                 ingestedAt = Clock.System.now()
                             )
                         )
+                    }
+
+                    // Enforce Reconciliation Gate if declared closing balance provided
+                    if (!declaredClosingUnitsStr.isNullOrEmpty()) {
+                        try {
+                            val declaredUnits = java.math.BigDecimal(declaredClosingUnitsStr!!)
+                            val recon = com.fintracker.tax.core.reconciliation.ReconciliationGate.validateStatement(ingested, declaredUnits)
+                            if (!recon.isMatched) {
+                                call.respond(
+                                    HttpStatusCode.BadRequest,
+                                    StatementUploadResponse(
+                                        status = "RECONCILIATION_FAILED",
+                                        message = recon.errorMessage ?: "Reconciliation Gate Failure: Mismatched closing balance."
+                                    )
+                                )
+                                return@post
+                            }
+                        } catch (e: NumberFormatException) {
+                            call.respond(
+                                HttpStatusCode.BadRequest,
+                                StatementUploadResponse("ERROR", "Invalid declared closing units format.")
+                            )
+                            return@post
+                        }
                     }
 
                     val insertedHashes = eventStore.appendEvents(ingested)
