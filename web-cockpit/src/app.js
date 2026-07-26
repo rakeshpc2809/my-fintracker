@@ -2,8 +2,18 @@ const API_BASE = window.location.origin.includes('http') ? `${window.location.or
 
 let perfChart = null;
 let allocChart = null;
+let currentFy = '2026-27';
 
 document.addEventListener('DOMContentLoaded', () => {
+  const fySelect = document.getElementById('fySelect');
+  if (fySelect) {
+    currentFy = fySelect.value;
+    fySelect.addEventListener('change', () => {
+      currentFy = fySelect.value;
+      fetchTaxMetrics();
+    });
+  }
+
   fetchLiveMetrics();
 
   const fileInput = document.getElementById('fileUploadInput');
@@ -23,8 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('password', password);
       }
 
+      const uploadBtn = document.querySelector('.upload-btn');
+
       try {
-        const uploadBtn = document.querySelector('.upload-btn');
         if (uploadBtn) uploadBtn.textContent = 'Parsing Statement...';
 
         const res = await fetch(`${API_BASE}/statements/upload`, {
@@ -32,17 +43,18 @@ document.addEventListener('DOMContentLoaded', () => {
           body: formData
         });
 
-        if (res.ok) {
-          const result = await res.json();
-          alert(`Statement Ingested Successfully! ${result.message}`);
+        const result = await res.json().catch(() => null);
+
+        if (res.ok && result && result.status === 'SUCCESS') {
+          showToast(result.message || 'Statement ingested successfully.', 'success');
           fetchLiveMetrics();
         } else {
-          alert('Statement parsing failed. Please check file format.');
+          const msg = (result && result.message) ? result.message : 'Statement parsing failed. Please check the file format.';
+          showToast(msg, 'error');
         }
       } catch (err) {
-        alert(`Error uploading statement: ${err.message}`);
+        showToast(`Upload error: ${err.message}`, 'error');
       } finally {
-        const uploadBtn = document.querySelector('.upload-btn');
         if (uploadBtn) uploadBtn.textContent = 'Upload CAS PDF / CSV';
         fileInput.value = '';
       }
@@ -50,78 +62,171 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ---------- Toasts ----------
+
+function showToast(message, type = 'success', timeoutMs = 6000) {
+  const stack = document.getElementById('toastStack');
+  if (!stack) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+  stack.appendChild(toast);
+
+  setTimeout(() => {
+    toast.remove();
+  }, timeoutMs);
+}
+
+// ---------- Formatting helpers ----------
+
+function fmtInr(value) {
+  const n = Math.round(parseFloat(value) || 0);
+  return `₹ ${n.toLocaleString('en-IN')}`;
+}
+
+function truncate(str, maxLen) {
+  if (!str) return '';
+  return str.length > maxLen ? `${str.slice(0, maxLen)}…` : str;
+}
+
+function clearSkeleton(el) {
+  if (el) el.classList.remove('skeleton');
+}
+
+// ---------- Fetch orchestration ----------
+
 async function fetchLiveMetrics() {
+  await Promise.all([
+    fetchPortfolioSummary(),
+    fetchTaxMetrics(),
+    fetchIntegrityStatus(),
+    fetchPerformanceHistory(),
+    fetchAllocation(),
+    fetchHarvestOpportunities()
+  ]);
+}
+
+async function fetchTaxMetrics() {
   try {
-    // 1. Portfolio summary & XIRR
-    const summaryRes = await fetch(`${API_BASE}/portfolio/summary`);
-    if (summaryRes.ok) {
-      const summary = await summaryRes.json();
-      updatePortfolioSummary(summary);
-    }
-
-    // 2. Exemption status
-    const exemptionRes = await fetch(`${API_BASE}/tax/exemption-status?fy=2026-27`);
+    const exemptionRes = await fetch(`${API_BASE}/tax/exemption-status?fy=${currentFy}`);
     if (exemptionRes.ok) {
-      const data = await exemptionRes.json();
-      updateExemptionMeter(data);
+      updateExemptionMeter(await exemptionRes.json());
     }
 
-    // 3. Integrity check
-    const integrityRes = await fetch(`${API_BASE}/events/integrity`);
-    if (integrityRes.ok) {
-      const data = await integrityRes.json();
-      const statusPill = document.querySelector('.status-pill');
-      if (statusPill && data.integrityValid) {
-        statusPill.innerHTML = `<span class="status-dot"></span> SHA-256 Chain Intact (${data.latestHash.substring(0, 8)}...)`;
-      }
-    }
-
-    // 4. ITR-2 report & STCG
-    const itr2Res = await fetch(`${API_BASE}/tax/reports/itr2?fy=2026-27`);
+    const itr2Res = await fetch(`${API_BASE}/tax/reports/itr2?fy=${currentFy}`);
     if (itr2Res.ok) {
-      const report = await itr2Res.json();
-      updateReportMetrics(report);
-    }
-
-    // 5. Performance History Chart
-    const historyRes = await fetch(`${API_BASE}/portfolio/history`);
-    if (historyRes.ok) {
-      const points = await historyRes.json();
-      renderPerformanceChart(points);
-    }
-
-    // 6. Asset Allocation Chart
-    const allocRes = await fetch(`${API_BASE}/portfolio/allocation`);
-    if (allocRes.ok) {
-      const allocations = await allocRes.json();
-      renderAllocationChart(allocations);
-    }
-
-    // 7. Harvest Advisor Opportunities
-    const harvestRes = await fetch(`${API_BASE}/tax/harvest-opportunities`);
-    if (harvestRes.ok) {
-      const opportunities = await harvestRes.json();
-      renderHarvestOpportunities(opportunities);
+      updateReportMetrics(await itr2Res.json());
     }
   } catch (err) {
     console.log('Ktor API offline or starting up, using cached cockpit metrics.');
   }
 }
 
+async function fetchPortfolioSummary() {
+  try {
+    const res = await fetch(`${API_BASE}/portfolio/summary`);
+    if (res.ok) {
+      updatePortfolioSummary(await res.json());
+    }
+  } catch (err) {
+    console.log('Ktor API offline or starting up, using cached cockpit metrics.');
+  }
+}
+
+async function fetchIntegrityStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/events/integrity`);
+    if (res.ok) {
+      const data = await res.json();
+      const statusPill = document.querySelector('.status-pill');
+      if (statusPill && data.integrityValid) {
+        statusPill.innerHTML = `<span class="status-dot"></span> SHA-256 Chain Intact (${data.latestHash.substring(0, 8)}...)`;
+      } else if (statusPill) {
+        statusPill.innerHTML = `<span class="status-dot" style="background:#f87171;box-shadow:0 0 8px #f87171;"></span> Ledger Integrity Check Failed`;
+      }
+    }
+  } catch (err) {
+    console.log('Ktor API offline or starting up, using cached cockpit metrics.');
+  }
+}
+
+async function fetchPerformanceHistory() {
+  try {
+    const res = await fetch(`${API_BASE}/portfolio/history`);
+    if (res.ok) {
+      renderPerformanceChart(await res.json());
+    }
+  } catch (err) {
+    console.log('Ktor API offline or starting up, using cached cockpit metrics.');
+  }
+}
+
+async function fetchAllocation() {
+  try {
+    const res = await fetch(`${API_BASE}/portfolio/allocation`);
+    if (res.ok) {
+      renderAllocationChart(await res.json());
+    }
+  } catch (err) {
+    console.log('Ktor API offline or starting up, using cached cockpit metrics.');
+  }
+}
+
+async function fetchHarvestOpportunities() {
+  try {
+    const res = await fetch(`${API_BASE}/tax/harvest-opportunities`);
+    if (res.ok) {
+      renderHarvestOpportunities(await res.json());
+    }
+  } catch (err) {
+    console.log('Ktor API offline or starting up, using cached cockpit metrics.');
+  }
+}
+
+// ---------- Renderers ----------
+
 function updatePortfolioSummary(summary) {
   const netWorthVal = document.querySelector('.net-worth-val');
+  const gainEl = document.querySelector('.net-worth-gain');
   const subText = document.querySelector('.net-worth-sub');
   const xirrVal = document.querySelector('.xirr-val');
+  const staleNote = document.getElementById('staleNavNote');
 
   if (netWorthVal && summary.totalCurrentValue) {
-    const val = parseFloat(summary.totalCurrentValue) || 0;
-    netWorthVal.textContent = `₹ ${Math.round(val).toLocaleString('en-IN')}`;
+    netWorthVal.textContent = fmtInr(summary.totalCurrentValue);
+    clearSkeleton(netWorthVal);
   }
-  if (subText && summary.activeHoldingCount) {
+
+  if (gainEl && summary.totalUnrealizedGain !== undefined) {
+    const gain = parseFloat(summary.totalUnrealizedGain) || 0;
+    const invested = parseFloat(summary.totalInvested) || 0;
+    const pct = invested > 0 ? (gain / invested) * 100 : 0;
+    const sign = gain > 0 ? '+' : '';
+    const arrow = gain >= 0
+      ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="18 15 12 9 6 15"></polyline></svg>'
+      : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+    gainEl.className = `metric-delta net-worth-gain ${gain > 0 ? 'positive' : gain < 0 ? 'negative' : 'neutral'}`;
+    gainEl.innerHTML = `${arrow} ${sign}${fmtInr(Math.abs(gain))} (${sign}${pct.toFixed(1)}%)`;
+  }
+
+  if (subText && summary.activeHoldingCount !== undefined) {
     subText.innerHTML = `Active Holdings: <strong>${summary.activeHoldingCount} Schemes</strong>`;
   }
+
   if (xirrVal && summary.xirrPercentage) {
     xirrVal.textContent = summary.xirrPercentage;
+    clearSkeleton(xirrVal);
+  }
+
+  if (staleNote) {
+    if (summary.staleNavCount && summary.staleNavCount > 0) {
+      staleNote.textContent = `${summary.staleNavCount} of ${summary.activeHoldingCount} holdings priced from last cost (NAV unavailable)`;
+      staleNote.classList.add('visible');
+    } else {
+      staleNote.classList.remove('visible');
+    }
   }
 }
 
@@ -136,18 +241,19 @@ function updateExemptionMeter(data) {
     const limit = parseFloat(data.exemptionLimit) || 125000;
     const pct = Math.min(100, Math.round((used / limit) * 100));
 
-    meterVal.innerHTML = `₹ ${Math.round(used).toLocaleString('en-IN')} <span class="sub-limit">/ 1.25L</span>`;
+    meterVal.innerHTML = `${fmtInr(used)} <span class="sub-limit">/ 1.25L</span>`;
+    clearSkeleton(meterVal);
     fill.style.width = `${pct}%`;
     if (pctText) pctText.textContent = `${pct}% Used`;
-    remainingText.textContent = `₹ ${Math.round(limit - used).toLocaleString('en-IN')} Available`;
+    remainingText.textContent = `${fmtInr(Math.max(0, limit - used))} Available`;
   }
 }
 
 function updateReportMetrics(report) {
   const stcgVal = document.querySelector('.stcg-val');
-  if (stcgVal && report.totalRealizedStcg) {
-    const stcg = parseFloat(report.totalRealizedStcg) || 0;
-    stcgVal.textContent = `₹ ${Math.round(stcg).toLocaleString('en-IN')}`;
+  if (stcgVal && report.totalRealizedStcg !== undefined) {
+    stcgVal.textContent = fmtInr(report.totalRealizedStcg);
+    clearSkeleton(stcgVal);
   }
 }
 
@@ -161,7 +267,7 @@ function renderHarvestOpportunities(opportunities) {
         <div class="radar-icon info">✓</div>
         <div class="radar-content">
           <div class="radar-title">No Tax-Loss Harvesting Required</div>
-          <div class="radar-desc">All open lots are currently sitting in gain or have 0 harvestable losses before March 31.</div>
+          <div class="radar-desc">All open lots are currently sitting in gain or have 0 harvestable losses right now.</div>
         </div>
         <span class="days-badge">Optimum</span>
       </div>
@@ -172,12 +278,13 @@ function renderHarvestOpportunities(opportunities) {
   let html = '';
   for (const opp of opportunities.slice(0, 3)) {
     const loss = Math.round(parseFloat(opp.potentialHarvestableLoss) || 0);
+    const name = truncate(opp.assetName, 40);
     html += `
       <div class="radar-card warning-border">
         <div class="radar-icon warning">⚡</div>
         <div class="radar-content">
           <div class="radar-title">Tax-Loss Harvesting Opportunity</div>
-          <div class="radar-desc">Harvest <strong>₹${loss.toLocaleString('en-IN')}</strong> loss in <em>${opp.assetName.substring(0, 30)}...</em> before March 31.</div>
+          <div class="radar-desc" title="${opp.assetName}">Harvest <strong>${fmtInr(loss)}</strong> unrealized loss in <em>${name}</em>.</div>
         </div>
         <button class="action-btn">Inspect Lot</button>
       </div>
@@ -188,7 +295,18 @@ function renderHarvestOpportunities(opportunities) {
 
 function renderPerformanceChart(points) {
   const ctx = document.getElementById('performanceChart');
-  if (!ctx || !points || points.length === 0) return;
+  const emptyState = document.getElementById('performanceEmpty');
+  if (!ctx) return;
+
+  if (!points || points.length === 0) {
+    if (perfChart) { perfChart.destroy(); perfChart = null; }
+    ctx.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'flex';
+    return;
+  }
+
+  ctx.style.display = 'block';
+  if (emptyState) emptyState.style.display = 'none';
 
   const labels = points.map(p => p.date);
   const values = points.map(p => parseFloat(p.invested) || 0);
@@ -226,7 +344,7 @@ function renderPerformanceChart(points) {
           borderColor: 'rgba(255, 255, 255, 0.1)',
           borderWidth: 1,
           callbacks: {
-            label: (context) => ` ₹ ${Math.round(context.parsed.y).toLocaleString('en-IN')}`
+            label: (context) => ` ${fmtInr(context.parsed.y)}`
           }
         }
       },
@@ -250,10 +368,21 @@ function renderPerformanceChart(points) {
 
 function renderAllocationChart(allocations) {
   const ctx = document.getElementById('allocationChart');
-  if (!ctx || !allocations || allocations.length === 0) return;
+  const emptyState = document.getElementById('allocationEmpty');
+  if (!ctx) return;
+
+  if (!allocations || allocations.length === 0) {
+    if (allocChart) { allocChart.destroy(); allocChart = null; }
+    ctx.style.display = 'none';
+    if (emptyState) emptyState.style.display = 'flex';
+    return;
+  }
+
+  ctx.style.display = 'block';
+  if (emptyState) emptyState.style.display = 'none';
 
   const top7 = allocations.slice(0, 7);
-  const labels = top7.map(a => a.assetName.substring(0, 20));
+  const labels = top7.map(a => truncate(a.assetName, 24) + (a.navStale ? ' *' : ''));
   const values = top7.map(a => parseFloat(a.currentValue) || 0);
 
   if (allocChart) allocChart.destroy();
@@ -277,6 +406,15 @@ function renderAllocationChart(allocations) {
         legend: {
           position: 'right',
           labels: { color: '#94a3b8', font: { family: 'Inter', size: 10 } }
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const entry = top7[context.dataIndex];
+              const suffix = entry.navStale ? ' (priced at cost — NAV unavailable)' : '';
+              return ` ${entry.assetName}: ${fmtInr(context.parsed)}${suffix}`;
+            }
+          }
         }
       }
     }

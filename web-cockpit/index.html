@@ -12,12 +12,18 @@
 </head>
 <body class="bg-obsidian">
   <div class="ambient-glow"></div>
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
   <div id="app" class="container">
     <header class="header">
       <div class="brand">
         <div class="logo-icon"></div>
         <div>
-          <span class="badge">FY 2026-27</span>
+          <select class="fy-select" id="fySelect" aria-label="Fiscal year">
+            <option value="2024-25">FY 2024-25</option>
+            <option value="2025-26">FY 2025-26</option>
+            <option value="2026-27" selected>FY 2026-27</option>
+          </select>
           <h1 class="brand-title">Portfolio Cockpit</h1>
         </div>
       </div>
@@ -38,21 +44,21 @@
       <!-- Top Metrics Row -->
       <div class="glass-card metric-box">
         <div class="metric-label">NET WORTH (VALUATION)</div>
-        <div class="metric-value font-mono net-worth-val">₹ --</div>
-        <div class="metric-delta positive net-worth-sub">
-          Active Holdings: -- Schemes
-        </div>
+        <div class="metric-value font-mono skeleton net-worth-val">₹ --,--,---</div>
+        <div class="metric-delta neutral net-worth-gain">Unrealized gain: --</div>
+        <div class="metric-subtext net-worth-sub">Active Holdings: -- Schemes</div>
+        <div class="stale-nav-note" id="staleNavNote">-- holdings priced from last cost (NAV unavailable)</div>
       </div>
 
       <div class="glass-card metric-box">
-        <div class="metric-label">REALIZED STCG (FY 26-27)</div>
-        <div class="metric-value font-mono stcg-val">₹ 0</div>
+        <div class="metric-label">REALIZED STCG (SELECTED FY)</div>
+        <div class="metric-value font-mono skeleton stcg-val">₹ 0</div>
         <div class="metric-subtext">Taxable under Sec 111A / 50AA</div>
       </div>
 
       <div class="glass-card metric-box exemption-box">
         <div class="metric-label">LTCG EXEMPTION METER (SEC 112A)</div>
-        <div class="metric-value font-mono ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
+        <div class="metric-value font-mono skeleton ltcg-meter-val">₹ 0 <span class="sub-limit">/ 1.25L</span></div>
         <div class="progress-track">
           <div class="progress-fill-gradient" style="width: 0%;"></div>
         </div>
@@ -64,7 +70,7 @@
 
       <div class="glass-card metric-box">
         <div class="metric-label">PORTFOLIO XIRR</div>
-        <div class="metric-value font-mono highlight-cyan xirr-val">--%</div>
+        <div class="metric-value font-mono highlight-cyan skeleton xirr-val">--%</div>
         <div class="metric-subtext">Money-Weighted XIRR</div>
       </div>
 
@@ -76,8 +82,12 @@
             <button class="pill-btn active">LIVE</button>
           </div>
         </div>
-        <div class="canvas-wrapper">
+        <div class="canvas-wrapper" id="performanceWrapper">
           <canvas id="performanceChart"></canvas>
+          <div class="chart-empty-state" id="performanceEmpty" style="display: none;">
+            <div class="chart-empty-icon">📈</div>
+            <div>No transactions yet — upload a CAS statement or broker CSV to see your invested-capital curve.</div>
+          </div>
         </div>
       </div>
 
@@ -87,8 +97,12 @@
           <h2>Asset Allocation</h2>
           <span class="live-tag">BY ASSET</span>
         </div>
-        <div class="canvas-wrapper-small">
+        <div class="canvas-wrapper-small" id="allocationWrapper">
           <canvas id="allocationChart"></canvas>
+          <div class="chart-empty-state" id="allocationEmpty" style="display: none;">
+            <div class="chart-empty-icon">🥧</div>
+            <div>No open holdings yet.</div>
+          </div>
         </div>
       </div>
 

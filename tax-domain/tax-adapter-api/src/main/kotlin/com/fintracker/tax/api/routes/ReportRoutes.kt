@@ -26,7 +26,8 @@ data class PortfolioSummaryResponse(
     val totalCurrentValue: String,
     val totalUnrealizedGain: String,
     val xirrPercentage: String,
-    val activeHoldingCount: Int
+    val activeHoldingCount: Int,
+    val staleNavCount: Int
 )
 
 @Serializable
@@ -35,7 +36,8 @@ data class AssetAllocationEntry(
     val assetName: String,
     val investedValue: String,
     val currentValue: String,
-    val percentage: String
+    val percentage: String,
+    val navStale: Boolean
 )
 
 @Serializable
@@ -126,6 +128,7 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
 
             val totalInvested = openLots.fold(BigDecimal.ZERO) { acc, lot -> acc.add(lot.totalCostBasis) }
             val activeHoldingCount = openLots.map { it.assetId }.distinct().size
+            val staleNavCount = openLots.map { it.assetId }.distinct().count { navMap[it] == null }
 
             val totalCurrentValue = openLots.fold(BigDecimal.ZERO) { acc, lot ->
                 val nav = navMap[lot.assetId]?.nav ?: lot.costPerUnit
@@ -160,7 +163,8 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
                     totalCurrentValue = totalCurrentValue.fmt(),
                     totalUnrealizedGain = totalUnrealizedGain.fmt(),
                     xirrPercentage = String.format("%.2f%%", xirr),
-                    activeHoldingCount = activeHoldingCount
+                    activeHoldingCount = activeHoldingCount,
+                    staleNavCount = staleNavCount
                 )
             )
         }
@@ -197,7 +201,8 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
                         assetName = lots.first().assetName,
                         investedValue = invested.fmt(),
                         currentValue = currentVal.fmt(),
-                        percentage = pct.fmt()
+                        percentage = pct.fmt(),
+                        navStale = navMap[assetId] == null
                     )
                 )
             }
