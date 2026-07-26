@@ -23,7 +23,7 @@
   let snapshot = $state<Snapshot | null>(null);
   let liveValuation = $state<number>(0);
   let syncStatus = $state<string>('Offline Cache');
-  let tailscaleIp = $state<string>('100.115.92.1'); // Configurable Tailscale IP
+  let tailscaleIp = $state<string>('192.168.1.13'); // LAN / Tailscale IP
 
   onMount(async () => {
     // 1. Try Tailscale P2P Sync from Desktop Ktor API
