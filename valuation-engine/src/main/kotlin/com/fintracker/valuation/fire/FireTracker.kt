@@ -25,8 +25,8 @@ data class FireProfile(
     val monthlyContribution: BigDecimal = BigDecimal("75000.00"),
     val nextReviewDate: LocalDate = LocalDate.parse("2027-03-31"),
     val scenarios: List<FireScenario> = listOf(
-        FireScenario("scen_1", "With parents, no kid", BigDecimal("60000.00"), true),
-        FireScenario("scen_2", "Renting, with kid", BigDecimal("90000.00"), false)
+        FireScenario("scen_1", "Primary Expense Target", BigDecimal("60000.00"), true),
+        FireScenario("scen_2", "Expanded Expense Target", BigDecimal("90000.00"), false)
     )
 )
 
