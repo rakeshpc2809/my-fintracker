@@ -72,8 +72,11 @@ class DuckDbEventStore(private val dbPath: String = System.getenv("DUCKDB_PATH")
         }
     }
 
+    private fun BigDecimal.toCanonicalString(): String =
+        this.setScale(8, java.math.RoundingMode.HALF_UP).toPlainString()
+
     private fun computeHash(prevHash: String, event: TaxEvent): String {
-        val raw = "$prevHash|${event.id}|${event.assetId}|${event.eventType}|${event.eventDate}|${event.units.toPlainString()}|${event.grossAmount.toPlainString()}|${event.sourceDocumentId}"
+        val raw = "$prevHash|${event.id}|${event.assetId}|${event.eventType}|${event.eventDate}|${event.units.toCanonicalString()}|${event.grossAmount.toCanonicalString()}|${event.sourceDocumentId}"
         val mac = Mac.getInstance("HmacSHA256")
         val secretKey = SecretKeySpec(hmacSecret.toByteArray(Charsets.UTF_8), "HmacSHA256")
         mac.init(secretKey)
@@ -220,8 +223,8 @@ class DuckDbEventStore(private val dbPath: String = System.getenv("DUCKDB_PATH")
                     rs.getString("asset_id"),
                     rs.getString("event_type"),
                     rs.getString("event_date"),
-                    rs.getBigDecimal("units").toPlainString(),
-                    rs.getBigDecimal("gross_amount").toPlainString(),
+                    rs.getBigDecimal("units").toCanonicalString(),
+                    rs.getBigDecimal("gross_amount").toCanonicalString(),
                     rs.getString("source_document_id")
                 )
                 if (recomputedHash != actualEventHash) return false

@@ -23,19 +23,17 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.fintracker.portfolioos.data.PortfolioRepository
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.fintracker.portfolioos.ui.theme.*
-import kotlinx.coroutines.launch
+import com.fintracker.portfolioos.ui.viewmodels.SettingsViewModel
 
 @Composable
 fun SettingsScreen(
     hideBalances: Boolean,
-    onToggleHideBalances: () -> Unit
+    onToggleHideBalances: () -> Unit,
+    settingsViewModel: SettingsViewModel = viewModel()
 ) {
-    var desktopIp by remember { mutableStateOf("192.168.1.13") }
-    var syncStatusMsg by remember { mutableStateOf("") }
-    var isSyncing by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    val uiState by settingsViewModel.uiState.collectAsState()
     val haptics = LocalHapticFeedback.current
     val scrollState = rememberScrollState()
 
@@ -111,9 +109,9 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 OutlinedTextField(
-                    value = desktopIp,
-                    onValueChange = { desktopIp = it },
-                    label = { Text("Desktop Host IP Address", color = TextMuted) },
+                    value = uiState.desktopIp,
+                    onValueChange = { settingsViewModel.updateDesktopIp(it) },
+                    label = { Text("Desktop Host IP Address / Tailscale DNS", color = TextMuted) },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = NeonCyan,
@@ -130,15 +128,9 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        isSyncing = true
-                        syncStatusMsg = "Syncing with $desktopIp..."
-                        scope.launch {
-                            val success = PortfolioRepository.syncWithBackend(desktopIp)
-                            isSyncing = false
-                            syncStatusMsg = if (success) "✓ Connected & Synced with Desktop Node!" else "⚡ Disconnected — Local Offline Domain Active"
-                        }
+                        settingsViewModel.testConnectionAndSync()
                     },
-                    enabled = !isSyncing,
+                    enabled = !uiState.isSyncing,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = NeonCyan,
                         contentColor = Color.Black
@@ -147,16 +139,16 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Text(
-                        text = if (isSyncing) "Connecting to Host..." else "Test Connection & Sync Snapshot",
+                        text = if (uiState.isSyncing) "Connecting to Host..." else "Test Connection & Sync Snapshot",
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                if (syncStatusMsg.isNotEmpty()) {
+                if (uiState.syncStatusMsg.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Surface(
                         shape = RoundedCornerShape(10.dp),
-                        color = if (syncStatusMsg.startsWith("✓")) Color(0xFF023824) else Color(0xFF3B2400),
+                        color = if (uiState.syncStatusMsg.startsWith("✓")) Color(0xFF023824) else Color(0xFF3B2400),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
@@ -164,18 +156,18 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                if (syncStatusMsg.startsWith("✓")) Icons.Default.CheckCircle else Icons.Default.Warning,
+                                if (uiState.syncStatusMsg.startsWith("✓")) Icons.Default.CheckCircle else Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = if (syncStatusMsg.startsWith("✓")) EmeraldGreen else AmberGlow,
+                                tint = if (uiState.syncStatusMsg.startsWith("✓")) EmeraldGreen else AmberGlow,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = syncStatusMsg,
+                                text = uiState.syncStatusMsg,
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
-                                color = if (syncStatusMsg.startsWith("✓")) EmeraldGreen else AmberGlow
+                                color = if (uiState.syncStatusMsg.startsWith("✓")) EmeraldGreen else AmberGlow
                             )
                         }
                     }
@@ -183,7 +175,7 @@ fun SettingsScreen(
             }
         }
 
-        // Privacy Card
+        // Privacy & Stealth Mode Card
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -197,28 +189,21 @@ fun SettingsScreen(
                 .padding(20.dp)
         ) {
             Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Security, contentDescription = null, tint = EmeraldGreen, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "PRIVACY & DISPLAY PREFERENCES",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = EmeraldGreen
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Privacy Balance Shield", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextMain)
-                        Text("Mask monetary values across all mobile screens", fontSize = 12.sp, color = TextMuted)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Security, contentDescription = null, tint = TextMain, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "PRIVACY & STEALTH MODE",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = TextMain
+                        )
                     }
 
                     Switch(
@@ -231,9 +216,62 @@ fun SettingsScreen(
                             checkedThumbColor = Color.Black,
                             checkedTrackColor = NeonCyan,
                             uncheckedThumbColor = TextMuted,
-                            uncheckedTrackColor = SurfaceContainerHigh
+                            uncheckedTrackColor = SurfaceContainerHighest
                         )
                     )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Mask net worth totals and invested capital values across all dashboard cards.",
+                    fontSize = 12.sp,
+                    color = TextMuted
+                )
+            }
+        }
+
+        // System Diagnostic Card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(SurfaceContainer)
+                .border(
+                    width = 1.dp,
+                    color = SurfaceContainerHighest,
+                    shape = RoundedCornerShape(24.dp)
+                )
+                .padding(20.dp)
+        ) {
+            Column {
+                Text(
+                    text = "ENGINE DIAGNOSTICS",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Architecture", fontSize = 12.sp, color = TextMuted)
+                    Text("Hexagonal Core + Compose", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = TextMain)
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Storage Driver", fontSize = 12.sp, color = TextMuted)
+                    Text("DuckDB Hybrid Event Store", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = TextMain)
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("System OS", fontSize = 12.sp, color = TextMuted)
+                    Text("Android 17 (API 35+)", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = NeonCyan)
                 }
             }
         }

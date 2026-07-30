@@ -12,7 +12,17 @@ object Itr2CsvExporter {
 
     private val GRANDFATHER_CUTOFF = LocalDate(2018, 1, 31)
 
-    fun generateSchedule112aCsv(matchedLots: List<MatchedLot>, fiscalYear: String, assetNameMap: Map<String, String>): String {
+    /**
+     * Generates Schedule 112A CSV according to Indian Income Tax Act Section 55(2)(ac):
+     * For pre-Jan 31, 2018 lots:
+     *   Deemed Cost = max(Actual Cost, min(FMV on 31-Jan-2018, Full Sale Proceeds))
+     */
+    fun generateSchedule112aCsv(
+        matchedLots: List<MatchedLot>,
+        fiscalYear: String,
+        assetNameMap: Map<String, String>,
+        fmv2018Map: Map<String, BigDecimal> = emptyMap()
+    ): String {
         val (startDate, endDate) = getFiscalYearBounds(fiscalYear)
         val ltcgLots = matchedLots.filter {
             it.taxTerm == TaxTerm.LONG_TERM &&
@@ -32,13 +42,22 @@ object Itr2CsvExporter {
             val proceeds = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.saleProceeds) }
             val actualCost = lots.fold(BigDecimal.ZERO) { acc, l -> acc.add(l.costBasis) }
 
-            // Section 112A Grandfathering FMV rule: for pre-2018 acquisitions, cost = max(actualCost, fmv)
             val isPre2018 = lots.any { it.acquisitionDate <= GRANDFATHER_CUTOFF }
-            val fmv = if (isPre2018) actualCost else BigDecimal.ZERO
-            val deemedCost = actualCost.max(fmv)
-            val gain = proceeds.subtract(deemedCost)
+            val fmvJan2018 = fmv2018Map[isin] ?: actualCost
 
-            sb.append("\"${isin}\",\"${name.replace("\"", "\"\"")}\",${totalUnits.fmt()},${proceeds.fmt()},${deemedCost.fmt()},${fmv.fmt()},0.00,${gain.fmt()}\n")
+            // Statutory Section 55(2)(ac) Formula:
+            // Deemed Cost = max(Actual Cost, min(FMV on 31-Jan-2018, Sale Proceeds))
+            val deemedCost = if (isPre2018) {
+                val lowerBound = fmvJan2018.min(proceeds)
+                actualCost.max(lowerBound)
+            } else {
+                actualCost
+            }
+
+            val gain = proceeds.subtract(deemedCost)
+            val displayFmv = if (isPre2018) fmvJan2018 else BigDecimal.ZERO
+
+            sb.append("\"${isin}\",\"${name.replace("\"", "\"\"")}\",${totalUnits.fmt()},${proceeds.fmt()},${deemedCost.fmt()},${displayFmv.fmt()},0.00,${gain.fmt()}\n")
         }
 
         return sb.toString()
@@ -69,10 +88,13 @@ object Itr2CsvExporter {
         return sb.toString()
     }
 
+    /**
+     * Generates Schedule FA CSV for foreign asset reporting.
+     * Peak values are explicitly flagged for verification against intra-year broker statements to avoid compliance audit risk.
+     */
     fun generateScheduleFaCsv(allEventsList: List<com.fintracker.tax.core.model.TaxEvent>): String {
         val sb = java.lang.StringBuilder()
-        sb.append("# COMPLIANCE DISCLAIMER: Peak Value INR is set to recorded cost basis. Verify intra-year peak NAV with official broker statements & SBI TT rates before filing.\n")
-        sb.append("Country Code,Foreign Entity Name,Address,Initial Investment (INR),Peak Value INR (Requires CA Verification),Closing Balance (INR),Gross Amount Paid/Credited\n")
+        sb.append("Country Code,Foreign Entity Name,Address,Initial Investment (INR),Peak Value INR (Requires Statement Verification),Closing Balance (INR),Gross Amount Paid/Credited\n")
 
         val intlEvents = allEventsList.filter {
             TaxClassifier.detectCategory(it.assetId, it.assetName) == AssetCategory.INTERNATIONAL
@@ -85,10 +107,8 @@ object Itr2CsvExporter {
             val name = events.first().assetName
             val initialCost = events.filter { it.eventType == com.fintracker.tax.core.model.EventType.ACQUISITION }
                 .fold(BigDecimal.ZERO) { acc, e -> acc.add(e.grossAmount) }
-            val peakVal = initialCost // Strictly cost basis; no arbitrary multiplication
-            val closingVal = initialCost
 
-            sb.append("\"US\",\"${name.replace("\"", "\"\"")}\",\"United States\",${initialCost.fmt()},${peakVal.fmt()},${closingVal.fmt()},0.00\n")
+            sb.append("\"US\",\"${name.replace("\"", "\"\"")}\",\"United States\",${initialCost.fmt()},\"VERIFY_PEAK_NAV\",${initialCost.fmt()},0.00\n")
         }
 
         return sb.toString()
@@ -98,7 +118,8 @@ object Itr2CsvExporter {
         val parts = fiscalYear.split("-")
         val startYear = parts[0].trim().toIntOrNull() ?: 2026
         val endYear = if (parts.size > 1 && parts[1].trim().length == 2) {
-            (startYear / 100) * 100 + parts[1].trim().toInt()
+            val prefix = startYear.toString().substring(0, 2)
+            (prefix + parts[1].trim()).toIntOrNull() ?: (startYear + 1)
         } else {
             startYear + 1
         }

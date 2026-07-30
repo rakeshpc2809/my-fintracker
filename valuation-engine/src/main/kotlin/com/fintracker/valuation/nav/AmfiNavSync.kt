@@ -1,15 +1,16 @@
 package com.fintracker.valuation.nav
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import java.io.BufferedReader
 import java.math.BigDecimal
 import java.net.URI
-import java.io.BufferedReader
-
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 data class NavEntry(
     val schemeCode: String,
@@ -22,6 +23,7 @@ data class NavEntry(
 class AmfiNavSync {
 
     companion object {
+        private val syncMutex = Mutex()
         @Volatile
         private var cachedNavs: List<NavEntry>? = null
         @Volatile
@@ -71,18 +73,25 @@ class AmfiNavSync {
             return@withContext currentCache
         }
 
-        try {
-            val url = URI.create("https://www.amfiindia.com/spages/NAVAll.txt").toURL()
-            val content = url.openStream().bufferedReader().use(BufferedReader::readText)
-            val parsed = parseAmfiFeed(content)
-
-            if (parsed.isNotEmpty()) {
-                cachedNavs = parsed
-                lastFetchTimeMs = now
+        syncMutex.withLock {
+            val doubleCheckCache = cachedNavs
+            if (doubleCheckCache != null && (System.currentTimeMillis() - lastFetchTimeMs) < CACHE_TTL_MS) {
+                return@withContext doubleCheckCache
             }
-            parsed
-        } catch (e: Exception) {
-            currentCache ?: emptyList()
+
+            try {
+                val url = URI.create("https://www.amfiindia.com/spages/NAVAll.txt").toURL()
+                val content = url.openStream().bufferedReader().use(BufferedReader::readText)
+                val parsed = parseAmfiFeed(content)
+
+                if (parsed.isNotEmpty()) {
+                    cachedNavs = parsed
+                    lastFetchTimeMs = System.currentTimeMillis()
+                }
+                parsed
+            } catch (e: Exception) {
+                doubleCheckCache ?: emptyList()
+            }
         }
     }
 }
