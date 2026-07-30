@@ -1,6 +1,6 @@
 :root {
   --bg-obsidian: #070a12;
-  --card-bg: rgba(15, 23, 42, 0.75);
+  --card-bg: #0d121f;
   --card-border: rgba(255, 255, 255, 0.08);
   --text-main: #f8fafc;
   --text-muted: #64748b;
@@ -27,14 +27,7 @@ body.bg-obsidian {
 }
 
 .ambient-glow {
-  position: fixed;
-  top: -10%;
-  left: 20%;
-  width: 60vw;
-  height: 50vh;
-  background: radial-gradient(circle, rgba(6, 182, 212, 0.07) 0%, rgba(139, 92, 246, 0.03) 50%, transparent 100%);
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 .container {
@@ -356,6 +349,54 @@ body.bg-obsidian {
   cursor: pointer;
 }
 
+/* Configurator Panel */
+.config-card {
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  background: linear-gradient(135deg, rgba(24, 29, 46, 0.95), rgba(13, 18, 31, 0.95));
+}
+
+.config-controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.config-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-group .input-lbl {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.config-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.config-input:focus {
+  border-color: var(--cyan-bright);
+}
+
+.config-validation {
+  font-size: 11px;
+  color: var(--cyan-bright);
+  padding: 6px 10px;
+  background: rgba(34, 211, 238, 0.1);
+  border-radius: 6px;
+}
+
 .slider-val {
   font-size: 15px;
   font-weight: 700;
@@ -485,7 +526,9 @@ body.bg-obsidian {
 /* Data Tables */
 .table-container {
   overflow-x: auto;
+  max-height: 480px;
   width: 100%;
+  contain: content;
 }
 
 .data-table {
@@ -495,6 +538,10 @@ body.bg-obsidian {
 }
 
 .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: var(--card-bg);
   text-align: left;
   padding: 12px 14px;
   color: var(--text-muted);
@@ -502,6 +549,19 @@ body.bg-obsidian {
   font-weight: 600;
   border-bottom: 1px solid var(--card-border);
   white-space: nowrap;
+}
+
+.antigravity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #06b6d4;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  padding: 2px 8px;
+  border-radius: 12px;
 }
 
 .data-table td {
@@ -588,3 +648,215 @@ body.bg-obsidian {
 
 .toast.success { border-left: 4px solid var(--green-positive); }
 .toast.error { border-left: 4px solid var(--red-negative); }
+
+/* Enhancement Components Styling */
+.insurance-banner {
+  margin-bottom: 24px;
+  border-left: 4px solid var(--amber-warn);
+}
+
+.insurance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.insurance-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--amber-warn);
+}
+
+.insurance-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.insurance-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--card-border);
+  padding: 12px 14px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.insurance-info .title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.insurance-info .desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.action-btn {
+  background: linear-gradient(135deg, rgba(6,182,212,0.2), rgba(59,130,246,0.2));
+  border: 1px solid var(--cyan-bright);
+  color: var(--cyan-bright);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+  background: var(--cyan-bright);
+  color: #000;
+}
+
+.purchased-btn {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid var(--green-positive);
+  color: var(--green-positive);
+  cursor: default;
+}
+
+/* FIRE Tracker */
+.fire-card {
+  border-top: 3px solid var(--cyan-bright);
+}
+
+.title-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.fire-status-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+}
+
+.fire-status-pill.on-track {
+  background: rgba(16, 185, 129, 0.2);
+  color: var(--green-positive);
+  border: 1px solid var(--green-positive);
+}
+
+.fire-status-pill.short {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--red-negative);
+  border: 1px solid var(--red-negative);
+}
+
+.fire-review-banner {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid var(--amber-warn);
+  color: var(--amber-warn);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+.fire-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.fire-stat-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--card-border);
+  padding: 14px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fire-stat-box.highlight-box {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: rgba(6, 182, 212, 0.3);
+}
+
+.fire-stat-box .lbl {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.fire-stat-box .val {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.fire-stat-box .sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Bucket Grid */
+.bucket-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.bucket-card {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--card-border);
+  padding: 14px;
+  border-radius: 10px;
+}
+
+.bucket-card.drifted {
+  border-color: var(--amber-warn);
+}
+
+.bucket-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.bucket-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.drift-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.drift-badge.ok { background: rgba(16,185,129,0.15); color: var(--green-positive); }
+.drift-badge.warn { background: rgba(245,158,11,0.15); color: var(--amber-warn); }
+
+.goal-alloc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.goal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.goal-row.idle-row {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: var(--cyan-bright);
+}

@@ -26,7 +26,7 @@ dependencies {
     implementation("org.slf4j:slf4j-simple:2.0.12")
 
     testImplementation(kotlin("test"))
-    testImplementation("io.ktor:ktor-server-tests-jvm:$ktorVersion")
+    testImplementation("io.ktor:ktor-server-test-host-jvm:$ktorVersion")
     testImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
 }

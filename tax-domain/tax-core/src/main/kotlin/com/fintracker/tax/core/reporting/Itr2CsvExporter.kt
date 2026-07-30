@@ -71,7 +71,8 @@ object Itr2CsvExporter {
 
     fun generateScheduleFaCsv(allEventsList: List<com.fintracker.tax.core.model.TaxEvent>): String {
         val sb = java.lang.StringBuilder()
-        sb.append("Country Code,Foreign Entity Name,Address,Initial Investment (INR),Peak Value INR (Estimate - Verify with SBI TT Rate),Closing Balance (INR),Gross Amount Paid/Credited\n")
+        sb.append("# COMPLIANCE DISCLAIMER: Peak Value INR is set to recorded cost basis. Verify intra-year peak NAV with official broker statements & SBI TT rates before filing.\n")
+        sb.append("Country Code,Foreign Entity Name,Address,Initial Investment (INR),Peak Value INR (Requires CA Verification),Closing Balance (INR),Gross Amount Paid/Credited\n")
 
         val intlEvents = allEventsList.filter {
             TaxClassifier.detectCategory(it.assetId, it.assetName) == AssetCategory.INTERNATIONAL
@@ -84,7 +85,7 @@ object Itr2CsvExporter {
             val name = events.first().assetName
             val initialCost = events.filter { it.eventType == com.fintracker.tax.core.model.EventType.ACQUISITION }
                 .fold(BigDecimal.ZERO) { acc, e -> acc.add(e.grossAmount) }
-            val peakVal = initialCost.multiply(BigDecimal("1.15")) // Estimated intra-year peak
+            val peakVal = initialCost // Strictly cost basis; no arbitrary multiplication
             val closingVal = initialCost
 
             sb.append("\"US\",\"${name.replace("\"", "\"\"")}\",\"United States\",${initialCost.fmt()},${peakVal.fmt()},${closingVal.fmt()},0.00\n")

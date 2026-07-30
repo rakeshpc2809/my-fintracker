@@ -4,6 +4,12 @@ build/
 **/build/
 bin/
 out/
+*.jar
+*.apk
+
+# Node & Package Managers
+node_modules/
+**/node_modules/
 
 # IDE files
 .idea/
@@ -13,12 +19,16 @@ out/
 # Python Cache
 __pycache__/
 *.pyc
+.venv/
+venv/
 
 # Project Data & Temporary Files
 data/
-*.duckdb
-files.zip
+*.duckdb*
+*.zip
 extracted_fixes/
 *.pdf
 *.log
-repomix-output.xml
+repomix-output.*
+
+.repowise/

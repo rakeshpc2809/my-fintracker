@@ -24,7 +24,7 @@ data class TaxEvent(
      * All acquisition/adjustment events add units (+units).
      */
     fun unitDelta(): BigDecimal = when (eventType) {
-        EventType.DISPOSAL -> -units
+        EventType.DISPOSAL, EventType.SGB_MATURITY -> -units
         EventType.SGB_INTEREST -> BigDecimal.ZERO
         else -> units
     }

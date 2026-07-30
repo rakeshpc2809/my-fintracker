@@ -1,11 +1,16 @@
 """
 CAMS / KFintech CAS PDF Parser module using casparser library with fallback.
 """
+import re
 import uuid
 from decimal import Decimal
 from typing import List, Optional
 from datetime import datetime, date
 from .models import TaxEventSchema, EventType
+
+DATE_REGEX = re.compile(r"^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.+)$")
+ISIN_REGEX = re.compile(r"ISIN:\s*([A-Z0-9]{12})", re.IGNORECASE)
+TOKEN_REGEX = re.compile(r"\((?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\)|\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b|\b\d+\.\d+\b")
 
 
 class CasPdfParser:
@@ -69,11 +74,7 @@ class CasPdfParser:
 
         # Fallback to pdfplumber regex line parser
         try:
-            import re
             import pdfplumber
-
-            date_regex = re.compile(r"^(\d{2}-[A-Za-z]{3}-\d{4})\s+(.+)$")
-            isin_regex = re.compile(r"ISIN:\s*([A-Z0-9]{12})", re.IGNORECASE)
 
             current_scheme = "Mutual Fund Scheme"
             current_isin: Optional[str] = None
@@ -86,7 +87,7 @@ class CasPdfParser:
                         if not line_str:
                             continue
 
-                        isin_match = isin_regex.search(line_str)
+                        isin_match = ISIN_REGEX.search(line_str)
                         if isin_match:
                             current_isin = isin_match.group(1)
 
@@ -109,7 +110,7 @@ class CasPdfParser:
                         ):
                             continue
 
-                        match = date_regex.match(line_str)
+                        match = DATE_REGEX.match(line_str)
                         if match:
                             date_str, rest = match.groups()
                             try:
@@ -117,10 +118,7 @@ class CasPdfParser:
                             except ValueError:
                                 event_date = datetime.now().date()
 
-                            num_tokens = re.findall(
-                                r"\((?:\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\)|\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\b|\b\d+\.\d+\b",
-                                rest,
-                            )
+                            num_tokens = TOKEN_REGEX.findall(rest)
 
                             clean_nums = []
                             for tok in num_tokens:

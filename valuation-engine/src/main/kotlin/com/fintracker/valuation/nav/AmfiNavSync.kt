@@ -8,6 +8,9 @@ import java.math.BigDecimal
 import java.net.URI
 import java.io.BufferedReader
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 data class NavEntry(
     val schemeCode: String,
     val isin: String?,
@@ -60,15 +63,15 @@ class AmfiNavSync {
         return entries
     }
 
-    fun fetchLatestNavsFromAmfi(): List<NavEntry> {
+    suspend fun fetchLatestNavsFromAmfi(): List<NavEntry> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val currentCache = cachedNavs
 
         if (currentCache != null && (now - lastFetchTimeMs) < CACHE_TTL_MS) {
-            return currentCache
+            return@withContext currentCache
         }
 
-        return try {
+        try {
             val url = URI.create("https://www.amfiindia.com/spages/NAVAll.txt").toURL()
             val content = url.openStream().bufferedReader().use(BufferedReader::readText)
             val parsed = parseAmfiFeed(content)
@@ -79,7 +82,6 @@ class AmfiNavSync {
             }
             parsed
         } catch (e: Exception) {
-            // Graceful degradation: Return cached entries if fetch fails, or empty list
             currentCache ?: emptyList()
         }
     }

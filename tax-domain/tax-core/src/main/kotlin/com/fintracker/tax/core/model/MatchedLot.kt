@@ -1,5 +1,6 @@
 package com.fintracker.tax.core.model
 
+import com.fintracker.tax.core.matcher.AssetCategory
 import kotlinx.datetime.LocalDate
 import java.math.BigDecimal
 
@@ -21,5 +22,6 @@ data class MatchedLot(
     val saleProceeds: BigDecimal,
     val realizedGain: BigDecimal,
     val holdingPeriodDays: Long,
-    val taxTerm: TaxTerm
+    val taxTerm: TaxTerm,
+    val assetCategory: AssetCategory = AssetCategory.EQUITY
 )

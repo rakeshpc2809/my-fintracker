@@ -1,11 +1,11 @@
 """
-Broker CSV Parser module (Zerodha, Groww, ICICI Direct, CAMS CSVs).
+Broker CSV Parser module (Zerodha, Groww, ICICI Direct, CAMS CSVs) using Polars.
 """
 import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
-import pandas as pd
+import polars as pl
 from .models import TaxEventSchema, EventType
 
 
@@ -17,14 +17,12 @@ class BrokerCsvParser:
     def parse(self) -> List[TaxEventSchema]:
         events: List[TaxEventSchema] = []
         try:
-            df = pd.read_csv(self.csv_path)
-            if df.empty:
+            df = pl.read_csv(self.csv_path, infer_schema_length=0)
+            if df.is_empty():
                 return events
 
-            # Normalize column names
             col_map = {str(c).strip().lower(): c for c in df.columns}
 
-            # Find matching column names
             date_col = next((col_map[k] for k in col_map if any(x in k for x in ["date", "txn_date", "trade_date"])), None)
             symbol_col = next((col_map[k] for k in col_map if any(x in k for x in ["symbol", "scheme", "scrip", "asset", "description"])), None)
             type_col = next((col_map[k] for k in col_map if any(x in k for x in ["type", "buy/sell", "transaction", "action"])), None)
@@ -32,10 +30,10 @@ class BrokerCsvParser:
             price_col = next((col_map[k] for k in col_map if any(x in k for x in ["price", "nav", "rate"])), None)
             amount_col = next((col_map[k] for k in col_map if any(x in k for x in ["amount", "value", "total"])), None)
 
-            for _, row in df.iterrows():
+            for row in df.to_dicts():
                 try:
-                    asset_name = str(row[symbol_col]) if symbol_col and pd.notna(row[symbol_col]) else "Broker Asset"
-                    date_str = str(row[date_col]) if date_col and pd.notna(row[date_col]) else ""
+                    asset_name = str(row[symbol_col]) if symbol_col and row.get(symbol_col) else "Broker Asset"
+                    date_str = str(row[date_col]) if date_col and row.get(date_col) else ""
 
                     event_date = datetime.now().date()
                     if date_str:
@@ -46,7 +44,7 @@ class BrokerCsvParser:
                             except ValueError:
                                 pass
 
-                    txn_type_str = str(row[type_col]).upper() if type_col and pd.notna(row[type_col]) else "BUY"
+                    txn_type_str = str(row[type_col]).upper() if type_col and row.get(type_col) else "BUY"
                     if any(x in txn_type_str for x in ["SELL", "REDEMPTION", "DISPOSAL", "SWITCH OUT"]):
                         event_type = EventType.DISPOSAL
                     elif "BONUS" in txn_type_str:
@@ -56,9 +54,14 @@ class BrokerCsvParser:
                     else:
                         event_type = EventType.ACQUISITION
 
-                    units = Decimal(str(abs(float(row[qty_col])))) if qty_col and pd.notna(row[qty_col]) else Decimal("1")
-                    price = Decimal(str(abs(float(row[price_col])))) if price_col and pd.notna(row[price_col]) else Decimal("0")
-                    amount = Decimal(str(abs(float(row[amount_col])))) if amount_col and pd.notna(row[amount_col]) else (units * price)
+                    units_val = row.get(qty_col)
+                    units = Decimal(str(abs(float(units_val)))) if units_val is not None and str(units_val).strip() != "" else Decimal("1")
+                    
+                    price_val = row.get(price_col)
+                    price = Decimal(str(abs(float(price_val)))) if price_val is not None and str(price_val).strip() != "" else Decimal("0")
+                    
+                    amt_val = row.get(amount_col)
+                    amount = Decimal(str(abs(float(amt_val)))) if amt_val is not None and str(amt_val).strip() != "" else (units * price)
 
                     events.append(
                         TaxEventSchema(
@@ -80,3 +83,4 @@ class BrokerCsvParser:
             pass
 
         return events
+

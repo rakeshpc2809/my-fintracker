@@ -1,5 +1,6 @@
 package com.fintracker.tax.core.reporting
 
+import com.fintracker.tax.core.matcher.AssetCategory
 import com.fintracker.tax.core.model.MatchedLot
 import com.fintracker.tax.core.model.TaxTerm
 import kotlinx.datetime.LocalDate
@@ -33,8 +34,10 @@ object ExemptionTracker {
             it.disposalDate <= endDate
         }
 
-        val ltgLots = matchedLots.filter {
+        // Section 112A exemption applies ONLY to equity assets
+        val equityLtgLots = matchedLots.filter {
             it.taxTerm == TaxTerm.LONG_TERM &&
+            it.assetCategory == AssetCategory.EQUITY &&
             it.disposalDate >= startDate &&
             it.disposalDate <= endDate
         }
@@ -45,9 +48,9 @@ object ExemptionTracker {
         val lST = stgLots.filter { it.realizedGain < BigDecimal.ZERO }
             .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain.abs()) }
 
-        val gLT = ltgLots.filter { it.realizedGain > BigDecimal.ZERO }
+        val gLT = equityLtgLots.filter { it.realizedGain > BigDecimal.ZERO }
             .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain) }
-        val lLT = ltgLots.filter { it.realizedGain < BigDecimal.ZERO }
+        val lLT = equityLtgLots.filter { it.realizedGain < BigDecimal.ZERO }
             .fold(BigDecimal.ZERO) { acc, m -> acc.add(m.realizedGain.abs()) }
 
         // STCL offsets STCG first

@@ -47,8 +47,8 @@ fun Application.module() {
         reportRoutes(eventStore)
         
         // Serve Web Cockpit UI directly from root http://127.0.0.1:8080/
-        val webCockpitDir = File("web-cockpit")
-        if (webCockpitDir.exists()) {
+        val webCockpitDir = listOf(File("web-cockpit"), File("../web-cockpit"), File("../../web-cockpit")).firstOrNull { it.exists() }
+        if (webCockpitDir != null) {
             staticFiles("/", webCockpitDir) {
                 default("index.html")
             }

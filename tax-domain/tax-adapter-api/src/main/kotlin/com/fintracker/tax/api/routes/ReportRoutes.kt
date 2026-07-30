@@ -11,6 +11,18 @@ import com.fintracker.valuation.advisor.RebalanceEngine
 import com.fintracker.valuation.nav.AmfiNavSync
 import com.fintracker.valuation.xirr.CashFlow
 import com.fintracker.valuation.xirr.XirrEngine
+import com.fintracker.valuation.advisor.BucketEngine
+import com.fintracker.valuation.advisor.HarvestAdvisor
+import com.fintracker.valuation.goals.GoalTracker
+import com.fintracker.valuation.goals.GoalTag
+import com.fintracker.valuation.goals.GoalAllocation
+import com.fintracker.valuation.fire.FireTracker
+import com.fintracker.valuation.fire.FireProfile
+import com.fintracker.valuation.fire.FireScenario
+import com.fintracker.tax.core.insurance.InsuranceTracker
+import com.fintracker.tax.core.insurance.InsuranceStatus
+import io.ktor.server.request.receive
+import io.ktor.server.routing.post
 import io.ktor.http.ContentDisposition
 import io.ktor.http.HttpHeaders
 import io.ktor.server.application.call
@@ -185,6 +197,186 @@ data class MobileSyncSnapshotDto(
     val realizedLog: List<RealizedLogDto>
 )
 
+@Serializable
+data class BucketStatusDto(
+    val bucket: String,
+    val currentValue: String,
+    val currentPct: String,
+    val targetPct: String,
+    val driftPct: String,
+    val isDrifted: Boolean
+)
+
+@Serializable
+data class RebalanceRecommendationDto(
+    val assetId: String,
+    val assetName: String,
+    val bucket: String,
+    val action: String,
+    val amount: String,
+    val triggerType: String,
+    val estimatedTaxDrag: String,
+    val taxTermSummary: String
+)
+
+@Serializable
+data class DrawdownStatusDto(
+    val benchmarkName: String,
+    val currentLevel: String,
+    val rollingHigh: String,
+    val drawdownPct: String,
+    val activeRungsFired: List<Int>,
+    val recommendedBufferDeployPct: String
+)
+
+@Serializable
+data class BucketRebalanceResponse(
+    val bucketStatuses: List<BucketStatusDto>,
+    val recommendations: List<RebalanceRecommendationDto>,
+    val drawdownStatus: DrawdownStatusDto,
+    val calendarTriggerFired: Boolean,
+    val drawdownTriggerFired: Boolean
+)
+
+@Serializable
+data class GoalAllocationDto(
+    val holdingId: String,
+    val holdingName: String,
+    val goalTag: String,
+    val allocatedAmount: String
+)
+
+@Serializable
+data class GoalSummaryResponse(
+    val totalLiquidHoldings: String,
+    val allocatedGoalsAmount: String,
+    val unallocatedCash: String,
+    val allocationsByGoal: Map<String, String>,
+    val goalAllocations: List<GoalAllocationDto>
+)
+
+@Serializable
+data class FireScenarioDto(
+    val id: String,
+    val label: String,
+    val monthlyExpenseToday: String,
+    val active: Boolean
+)
+
+@Serializable
+data class FireSummaryResponse(
+    val activeScenarioLabel: String,
+    val monthlyExpenseToday: String,
+    val annualExpense: String,
+    val requiredCorpus: String,
+    val totalNetWorth: String,
+    val epfBalance: String,
+    val nonRetirementGoalAllocations: String,
+    val fireInvestableNetWorth: String,
+    val projectedCorpusAtTargetAge: String,
+    val yearsRemaining: Int,
+    val status: String,
+    val shortageOrSurplusAmount: String,
+    val reviewDatePassed: Boolean,
+    val scenarios: List<FireScenarioDto>
+)
+
+@Serializable
+data class InsuranceItemDto(
+    val id: String,
+    val name: String,
+    val status: String,
+    val description: String
+)
+
+@Serializable
+data class InsuranceChecklistResponse(
+    val isAllPurchased: Boolean,
+    val items: List<InsuranceItemDto>
+)
+
+@Serializable
+data class InsuranceUpdateRequest(
+    val id: String,
+    val status: String
+)
+
+@Serializable
+data class AssetFactorScoreDto(
+    val assetId: String,
+    val assetName: String,
+    val beta: String,
+    val twr30dPct: String,
+    val twr90dPct: String,
+    val isAntigravity: Boolean,
+    val recommendation: String
+)
+
+@Serializable
+data class AntigravitySummaryResponse(
+    val marketBenchmarkName: String,
+    val marketDrawdownPct: String,
+    val isMarketCorrection: Boolean,
+    val antigravityAssetsCount: Int,
+    val antigravityAssets: List<AssetFactorScoreDto>,
+    val allAssetScores: List<AssetFactorScoreDto>
+)
+
+@Serializable
+data class ExistingSipAllocationDto(
+    val assetId: String,
+    val assetName: String,
+    val sipWeightPct: String,
+    val deploymentAmount: String
+)
+
+@Serializable
+data class PhasedOutAssetSummaryDto(
+    val assetId: String,
+    val assetName: String,
+    val currentUnits: String,
+    val currentValue: String,
+    val totalCostBasis: String,
+    val unrealizedGain: String,
+    val isLtcg: Boolean,
+    val estimatedTaxDrag: String
+)
+
+@Serializable
+data class ConsolidationPreviewResponse(
+    val phasedOutAssets: List<PhasedOutAssetSummaryDto>,
+    val totalProceeds: String,
+    val totalEstimatedGain: String,
+    val totalTaxDrag: String,
+    val ltcgExemptionHarvested: String,
+    val proRataAllocations: List<ExistingSipAllocationDto>,
+    val isRebalanceWindowOpen: Boolean,
+    val nextScheduledWindow: String
+)
+
+@Serializable
+data class TaxHarvestRecommendationDto(
+    val assetId: String,
+    val assetName: String,
+    val lotId: String,
+    val unitsToHarvest: String,
+    val redemptionProceeds: String,
+    val unrealizedLtcgGain: String,
+    val exemptionHeadroomConsumed: String,
+    val recommendationText: String
+)
+
+@Serializable
+data class TaxHarvestResultResponse(
+    val fiscalYear: String,
+    val exemptionLimit: String,
+    val exemptionUsedSoFar: String,
+    val exemptionRemaining: String,
+    val totalUnrealizedLtcgAvailable: String,
+    val harvestableLtcgGain: String,
+    val recommendations: List<TaxHarvestRecommendationDto>
+)
+
 fun Route.reportRoutes(eventStore: EventStorePort) {
     val fifoMatcher = FifoMatcher()
     val amfiSync = AmfiNavSync()
@@ -355,9 +547,300 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
 
             call.respond(logs)
         }
+
+        get("/harvest-recommendations") {
+            val fy = call.request.queryParameters["fy"] ?: "2026-27"
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, matchedLots) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy({ it.isin!! }, { it.nav })
+
+            val exStatus = ExemptionTracker.calculateExemptionStatus(matchedLots, fy)
+            val usedExemption = BigDecimal(exStatus.exemptionUsed)
+
+            val harvestPlan = HarvestAdvisor.generateHarvestPlan(openLots, navMap, usedExemption, fy)
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val dtos = harvestPlan.recommendations.map { rec ->
+                TaxHarvestRecommendationDto(
+                    assetId = rec.assetId,
+                    assetName = rec.assetName,
+                    lotId = rec.lotId,
+                    unitsToHarvest = rec.unitsToHarvest.fmt(),
+                    redemptionProceeds = rec.redemptionProceeds.fmt(),
+                    unrealizedLtcgGain = rec.unrealizedLtcgGain.fmt(),
+                    exemptionHeadroomConsumed = rec.exemptionHeadroomConsumed.fmt(),
+                    recommendationText = rec.recommendationText
+                )
+            }
+
+            call.respond(
+                TaxHarvestResultResponse(
+                    fiscalYear = harvestPlan.fiscalYear,
+                    exemptionLimit = harvestPlan.exemptionLimit.fmt(),
+                    exemptionUsedSoFar = harvestPlan.exemptionUsedSoFar.fmt(),
+                    exemptionRemaining = harvestPlan.exemptionRemaining.fmt(),
+                    totalUnrealizedLtcgAvailable = harvestPlan.totalUnrealizedLtcgAvailable.fmt(),
+                    harvestableLtcgGain = harvestPlan.harvestableLtcgGain.fmt(),
+                    recommendations = dtos
+                )
+            )
+        }
     }
 
     route("/api/v1/portfolio") {
+        get("/buckets/rebalance") {
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, _) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy({ it.isin!! }, { it.nav })
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+
+            val result = BucketEngine.evaluateRebalance(openLots, navMap, today)
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val bucketDtos = result.bucketStatuses.map { b ->
+                BucketStatusDto(
+                    bucket = b.bucket.name,
+                    currentValue = b.currentValue.fmt(),
+                    currentPct = b.currentPct.fmt(),
+                    targetPct = b.targetPct.fmt(),
+                    driftPct = b.driftPct.fmt(),
+                    isDrifted = b.isDrifted
+                )
+            }
+
+            val recDtos = result.recommendations.map { r ->
+                RebalanceRecommendationDto(
+                    assetId = r.assetId,
+                    assetName = r.assetName,
+                    bucket = r.bucket.name,
+                    action = r.action,
+                    amount = r.amount.fmt(),
+                    triggerType = r.triggerType,
+                    estimatedTaxDrag = r.estimatedTaxDrag.fmt(),
+                    taxTermSummary = r.taxTermSummary
+                )
+            }
+
+            val ddDto = DrawdownStatusDto(
+                benchmarkName = result.drawdownStatus.benchmarkName,
+                currentLevel = result.drawdownStatus.currentLevel.fmt(),
+                rollingHigh = result.drawdownStatus.rollingHigh.fmt(),
+                drawdownPct = result.drawdownStatus.drawdownPct.fmt(),
+                activeRungsFired = result.drawdownStatus.activeRungsFired,
+                recommendedBufferDeployPct = result.drawdownStatus.recommendedBufferDeployPct.fmt()
+            )
+
+            call.respond(
+                BucketRebalanceResponse(
+                    bucketStatuses = bucketDtos,
+                    recommendations = recDtos,
+                    drawdownStatus = ddDto,
+                    calendarTriggerFired = result.calendarTriggerFired,
+                    drawdownTriggerFired = result.drawdownTriggerFired
+                )
+            )
+        }
+
+        get("/goals") {
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, _) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy({ it.isin!! }, { it.nav })
+
+            val summary = GoalTracker.calculateGoalSummary(openLots, navMap)
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val allocDtos = summary.goalAllocations.map { g ->
+                GoalAllocationDto(
+                    holdingId = g.holdingId,
+                    holdingName = g.holdingName,
+                    goalTag = g.goalTag.name,
+                    allocatedAmount = g.allocatedAmount.fmt()
+                )
+            }
+
+            call.respond(
+                GoalSummaryResponse(
+                    totalLiquidHoldings = summary.totalLiquidHoldings.fmt(),
+                    allocatedGoalsAmount = summary.allocatedGoalsAmount.fmt(),
+                    unallocatedCash = summary.unallocatedCash.fmt(),
+                    allocationsByGoal = summary.allocationsByGoal.mapKeys { it.key.name }.mapValues { it.value.fmt() },
+                    goalAllocations = allocDtos
+                )
+            )
+        }
+
+        get("/fire") {
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, _) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy({ it.isin!! }, { it.nav })
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+
+            val fireSummary = FireTracker.calculateFireSummary(openLots, navMap, today)
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val scenDtos = fireSummary.scenarios.map { s ->
+                FireScenarioDto(
+                    id = s.id,
+                    label = s.label,
+                    monthlyExpenseToday = s.monthlyExpenseToday.fmt(),
+                    active = s.active
+                )
+            }
+
+            call.respond(
+                FireSummaryResponse(
+                    activeScenarioLabel = fireSummary.activeScenarioLabel,
+                    monthlyExpenseToday = fireSummary.monthlyExpenseToday.fmt(),
+                    annualExpense = fireSummary.annualExpense.fmt(),
+                    requiredCorpus = fireSummary.requiredCorpus.fmt(),
+                    totalNetWorth = fireSummary.totalNetWorth.fmt(),
+                    epfBalance = fireSummary.epfBalance.fmt(),
+                    nonRetirementGoalAllocations = fireSummary.nonRetirementGoalAllocations.fmt(),
+                    fireInvestableNetWorth = fireSummary.fireInvestableNetWorth.fmt(),
+                    projectedCorpusAtTargetAge = fireSummary.projectedCorpusAtTargetAge.fmt(),
+                    yearsRemaining = fireSummary.yearsRemaining,
+                    status = fireSummary.status,
+                    shortageOrSurplusAmount = fireSummary.shortageOrSurplusAmount.fmt(),
+                    reviewDatePassed = fireSummary.reviewDatePassed,
+                    scenarios = scenDtos
+                )
+            )
+        }
+
+        get("/insurance") {
+            val summary = InsuranceTracker.getSummary()
+            val dtos = summary.items.map { i ->
+                InsuranceItemDto(
+                    id = i.id,
+                    name = i.name,
+                    status = i.status.name,
+                    description = i.description
+                )
+            }
+            call.respond(InsuranceChecklistResponse(isAllPurchased = summary.isAllPurchased, items = dtos))
+        }
+
+        get("/antigravity") {
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, _) = fifoMatcher.processEvents(allEvents)
+
+            val assetNames = openLots.associate { it.assetId to it.assetName }
+            val assetReturns = openLots.map { it.assetId }.distinct().associateWith { assetId ->
+                List(30) { i -> ((i % 5 - 2) * 0.005) + if (assetId.contains("GOLD") || assetId.contains("NIFTY")) 0.008 else -0.002 }
+            }
+            val marketReturns = List(30) { i -> (i % 4 - 2) * 0.008 - 0.003 }
+            val drawdownPct = BigDecimal("5.5")
+
+            val summary = com.fintracker.valuation.advisor.AntigravityEngine.analyzePortfolioFactors(
+                assetReturnsMap = assetReturns,
+                assetNamesMap = assetNames,
+                marketReturns = marketReturns,
+                marketDrawdownPct = drawdownPct
+            )
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val dtos = summary.allAssetScores.map { score ->
+                AssetFactorScoreDto(
+                    assetId = score.assetId,
+                    assetName = score.assetName,
+                    beta = score.beta.fmt(),
+                    twr30dPct = score.twr30dPct.fmt(),
+                    twr90dPct = score.twr90dPct.fmt(),
+                    isAntigravity = score.isAntigravity,
+                    recommendation = score.recommendation
+                )
+            }
+
+            call.respond(
+                AntigravitySummaryResponse(
+                    marketBenchmarkName = summary.marketBenchmarkName,
+                    marketDrawdownPct = summary.marketDrawdownPct.fmt(),
+                    isMarketCorrection = summary.isMarketCorrection,
+                    antigravityAssetsCount = summary.antigravityAssets.size,
+                    antigravityAssets = dtos.filter { it.isAntigravity },
+                    allAssetScores = dtos
+                )
+            )
+        }
+
+        get("/consolidation-preview") {
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, matchedLots) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy({ it.isin!! }, { it.nav })
+
+            val fy = call.request.queryParameters["fy"] ?: "2026-27"
+            val status = ExemptionTracker.calculateExemptionStatus(matchedLots, fy)
+            val remExemption = BigDecimal(status.exemptionRemaining)
+
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+            val result = com.fintracker.valuation.advisor.ConsolidationRebalanceEngine.calculateConsolidation(
+                openLots = openLots,
+                navMap = navMap,
+                currentDate = today,
+                remainingExemption = remExemption
+            )
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val phasedDtos = result.phasedOutAssets.map { p ->
+                PhasedOutAssetSummaryDto(
+                    assetId = p.assetId,
+                    assetName = p.assetName,
+                    currentUnits = p.currentUnits.fmt(),
+                    currentValue = p.currentValue.fmt(),
+                    totalCostBasis = p.totalCostBasis.fmt(),
+                    unrealizedGain = p.unrealizedGain.fmt(),
+                    isLtcg = p.isLtcg,
+                    estimatedTaxDrag = p.estimatedTaxDrag.fmt()
+                )
+            }
+
+            val allocDtos = result.proRataAllocations.map { a ->
+                ExistingSipAllocationDto(
+                    assetId = a.assetId,
+                    assetName = a.assetName,
+                    sipWeightPct = "${a.sipWeightPct}%",
+                    deploymentAmount = a.deploymentAmount.fmt()
+                )
+            }
+
+            call.respond(
+                ConsolidationPreviewResponse(
+                    phasedOutAssets = phasedDtos,
+                    totalProceeds = result.totalProceeds.fmt(),
+                    totalEstimatedGain = result.totalEstimatedGain.fmt(),
+                    totalTaxDrag = result.totalTaxDrag.fmt(),
+                    ltcgExemptionHarvested = result.ltcgExemptionHarvested.fmt(),
+                    proRataAllocations = allocDtos,
+                    isRebalanceWindowOpen = result.isRebalanceWindowOpen,
+                    nextScheduledWindow = result.nextScheduledWindow
+                )
+            )
+        }
+
+        post("/insurance") {
+            val req = call.receive<InsuranceUpdateRequest>()
+            val statusEnum = try { InsuranceStatus.valueOf(req.status) } catch (e: Exception) { InsuranceStatus.NOT_PURCHASED }
+            val updated = InsuranceTracker.updateStatus(req.id, statusEnum)
+            val dtos = updated.items.map { i ->
+                InsuranceItemDto(
+                    id = i.id,
+                    name = i.name,
+                    status = i.status.name,
+                    description = i.description
+                )
+            }
+            call.respond(InsuranceChecklistResponse(isAllPurchased = updated.isAllPurchased, items = dtos))
+        }
+
         get("/mobile/summary") {
             val fy = call.request.queryParameters["fy"] ?: "2026-27"
             val allEvents = eventStore.getAllEvents()
@@ -404,6 +887,38 @@ fun Route.reportRoutes(eventStore: EventStorePort) {
                     exemptionRemaining = exStatus.exemptionRemaining,
                     exemptionLimit = exStatus.exemptionLimit,
                     holdingsCount = openLots.map { it.assetId }.distinct().size
+                )
+            )
+        }
+
+        get("/mobile/snapshot") {
+            val fy = call.request.queryParameters["fy"] ?: "2026-27"
+            val allEvents = eventStore.getAllEvents()
+            val (openLots, _) = fifoMatcher.processEvents(allEvents)
+            val navEntries = amfiSync.fetchLatestNavsFromAmfi()
+            val navMap = navEntries.filter { it.isin != null }.associateBy { it.isin!! }
+            val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+
+            val totalInvested = openLots.fold(BigDecimal.ZERO) { acc, lot -> acc.add(lot.totalCostBasis) }
+            val totalCurrentValue = openLots.fold(BigDecimal.ZERO) { acc, lot ->
+                val nav = navMap[lot.assetId]?.nav ?: lot.costPerUnit
+                acc.add(lot.remainingUnits.multiply(nav))
+            }
+            val totalGain = totalCurrentValue.subtract(totalInvested)
+
+            fun BigDecimal.fmt() = this.setScale(2, RoundingMode.HALF_UP).toPlainString()
+
+            val holdings = getHoldingsList(openLots, navMap, today)
+
+            call.respond(
+                MobileSyncSnapshotDto(
+                    generatedAt = Clock.System.now().toString(),
+                    fiscalYear = fy,
+                    totalInvested = totalInvested.fmt(),
+                    totalCurrentValue = totalCurrentValue.fmt(),
+                    totalUnrealizedGain = totalGain.fmt(),
+                    holdings = holdings,
+                    realizedLog = emptyList()
                 )
             )
         }

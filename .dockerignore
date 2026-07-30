@@ -1,0 +1,8 @@
+.git
+.gradle
+.idea
+mobile-app/android/build
+mobile-app/android/app/build
+mobile-app/android/.gradle
+repomix-output.xml
+data/*.duckdb

@@ -14,13 +14,13 @@ class FifoMatcher {
 
     fun processEvents(events: List<TaxEvent>): Pair<List<Lot>, List<MatchedLot>> {
         val sortedEvents = events.sortedBy { it.eventDate }
-        val openLots = mutableListOf<Lot>()
+        val openLotsQueue = mutableListOf<Lot>()
         val matchedLots = mutableListOf<MatchedLot>()
 
         for (event in sortedEvents) {
             when (event.eventType) {
                 EventType.ACQUISITION, EventType.SIP_INSTALMENT, EventType.DIVIDEND_REINVEST -> {
-                    openLots.add(
+                    openLotsQueue.add(
                         Lot(
                             lotId = UUID.randomUUID().toString(),
                             assetId = event.assetId,
@@ -35,8 +35,7 @@ class FifoMatcher {
                 }
 
                 EventType.BONUS -> {
-                    // Bonus: Zero-cost lot, allotment date starts holding period
-                    openLots.add(
+                    openLotsQueue.add(
                         Lot(
                             lotId = UUID.randomUUID().toString(),
                             assetId = event.assetId,
@@ -51,19 +50,18 @@ class FifoMatcher {
                 }
 
                 EventType.SPLIT -> {
-                    // Split: Re-denominates existing open lots, keeping same acquisition date and total cost basis
-                    val splitRatio = event.units // e.g. 2 for 1:2 split
+                    val splitRatio = event.units
                     if (splitRatio > BigDecimal.ZERO) {
-                        for (i in openLots.indices) {
-                            if (openLots[i].assetId == event.assetId) {
-                                val current = openLots[i]
+                        for (i in openLotsQueue.indices) {
+                            if (openLotsQueue[i].assetId == event.assetId) {
+                                val current = openLotsQueue[i]
                                 val newRemaining = current.remainingUnits.multiply(splitRatio)
                                 val newOriginal = current.originalUnits.multiply(splitRatio)
                                 val newCostPerUnit = if (newRemaining > BigDecimal.ZERO) {
                                     current.totalCostBasis.divide(newRemaining, 4, RoundingMode.HALF_UP)
                                 } else BigDecimal.ZERO
 
-                                openLots[i] = current.copy(
+                                openLotsQueue[i] = current.copy(
                                     originalUnits = newOriginal,
                                     remainingUnits = newRemaining,
                                     costPerUnit = newCostPerUnit
@@ -73,13 +71,15 @@ class FifoMatcher {
                     }
                 }
 
-                EventType.DISPOSAL -> {
+                EventType.DISPOSAL, EventType.SGB_MATURITY -> {
                     var unitsToMatch = event.units
-                    val iterator = openLots.iterator()
+                    val isSgbMaturity = event.eventType == EventType.SGB_MATURITY
+                    var i = 0
 
-                    while (iterator.hasNext() && unitsToMatch > BigDecimal.ZERO) {
-                        val currentLot = iterator.next()
+                    while (i < openLotsQueue.size && unitsToMatch > BigDecimal.ZERO) {
+                        val currentLot = openLotsQueue[i]
                         if (currentLot.assetId != event.assetId || currentLot.remainingUnits <= BigDecimal.ZERO) {
+                            i++
                             continue
                         }
 
@@ -89,7 +89,13 @@ class FifoMatcher {
                         val realizedGain = saleProceedsSlice.subtract(costBasisSlice)
                         val holdingDays = currentLot.acquisitionDate.daysUntil(event.eventDate).toLong()
                         val category = TaxClassifier.detectCategory(event.assetId, event.assetName)
-                        val taxTerm = TaxClassifier.classifyTaxTerm(category, holdingDays)
+                        val isListed = TaxClassifier.isListed(event.assetId, event.assetName)
+
+                        val taxTerm = if (isSgbMaturity) {
+                            TaxTerm.EXEMPT
+                        } else {
+                            TaxClassifier.classifyTaxTerm(category, holdingDays, isListed = isListed)
+                        }
 
                         matchedLots.add(
                             MatchedLot(
@@ -104,7 +110,8 @@ class FifoMatcher {
                                 saleProceeds = saleProceedsSlice,
                                 realizedGain = realizedGain,
                                 holdingPeriodDays = holdingDays,
-                                taxTerm = taxTerm
+                                taxTerm = taxTerm,
+                                assetCategory = category
                             )
                         )
 
@@ -112,22 +119,18 @@ class FifoMatcher {
                         val updatedRemaining = currentLot.remainingUnits.subtract(matchedUnits)
 
                         if (updatedRemaining <= BigDecimal.ZERO) {
-                            iterator.remove()
+                            openLotsQueue.removeAt(i)
                         } else {
-                            val lotIdx = openLots.indexOf(currentLot)
-                            if (lotIdx != -1) {
-                                openLots[lotIdx] = currentLot.copy(remainingUnits = updatedRemaining)
-                            }
+                            openLotsQueue[i] = currentLot.copy(remainingUnits = updatedRemaining)
+                            i++
                         }
                     }
                 }
 
-                else -> {
-                    // Cash or non-unit events like SGB interest
-                }
+                else -> {}
             }
         }
 
-        return Pair(openLots, matchedLots)
+        return Pair(openLotsQueue, matchedLots)
     }
 }

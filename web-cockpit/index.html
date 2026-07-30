@@ -11,7 +11,6 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
 </head>
 <body class="bg-obsidian">
-  <div class="ambient-glow"></div>
   <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
   <div id="app" class="container">
@@ -52,6 +51,20 @@
       </div>
     </header>
 
+    <!-- Insurance Checklist Persistent Banner -->
+    <div id="insuranceBanner" class="insurance-banner glass-card" style="display: none;">
+      <div class="insurance-header">
+        <div class="insurance-title">
+          <span class="warning-shield-icon">🛡️</span>
+          <strong>PERSONAL INSURANCE CHECKLIST (JOB SWITCH PROTECTION)</strong>
+        </div>
+        <span class="insurance-badge warning-badge" id="insuranceStatusBadge">ACTION REQUIRED</span>
+      </div>
+      <div class="insurance-items" id="insuranceItemsList">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
     <!-- Top Metrics Cards Grid -->
     <section class="top-metrics-grid">
       <div class="glass-card metric-box">
@@ -63,9 +76,9 @@
       </div>
 
       <div class="glass-card metric-box">
-        <div class="metric-label">REALIZED STCG (SELECTED FY)</div>
-        <div class="metric-value font-mono skeleton stcg-val">₹ 0</div>
-        <div class="metric-subtext">Taxable under Sec 111A / 50AA</div>
+        <div class="metric-label">UNALLOCATED CASH (IDLE)</div>
+        <div class="metric-value font-mono highlight-cyan skeleton idle-cash-val">₹ --,--,---</div>
+        <div class="metric-subtext">Sitting idle across Liquid & SA</div>
       </div>
 
       <div class="glass-card metric-box exemption-box">
@@ -89,15 +102,142 @@
 
     <!-- Main Dashboard 12-Column Grid -->
     <main class="dashboard-grid">
-      <!-- Portfolio Performance Curve -->
+      <!-- Interactive System Parameters & Engine Configurator Card -->
+      <div class="glass-card col-12 config-card">
+        <div class="card-header">
+          <h2>Interactive System Parameters & Engine Configurator</h2>
+          <span class="live-tag">REAL-TIME SIMULATOR</span>
+        </div>
+        <div class="config-controls-grid">
+          <div class="config-group">
+            <label class="input-lbl" for="cfgFireAge">Target FIRE Age:</label>
+            <input type="number" id="cfgFireAge" class="config-input font-mono" value="45" min="30" max="75">
+          </div>
+          <div class="config-group">
+            <label class="input-lbl" for="cfgMonthlyExpense">Monthly Expense (INR):</label>
+            <input type="number" id="cfgMonthlyExpense" class="config-input font-mono" value="60000" step="5000">
+          </div>
+          <div class="config-group">
+            <label class="input-lbl" for="cfgSwrPct">Safe Withdrawal Rate (SWR %):</label>
+            <input type="number" id="cfgSwrPct" class="config-input font-mono" value="3.0" step="0.1" min="1.0" max="6.0">
+          </div>
+          <div class="config-group">
+            <label class="input-lbl" for="cfgEquityCorePct">Equity Core Target %:</label>
+            <input type="number" id="cfgEquityCorePct" class="config-input font-mono" value="45" min="0" max="100">
+          </div>
+          <div class="config-group">
+            <label class="input-lbl" for="cfgEquitySatPct">Equity Satellite Target %:</label>
+            <input type="number" id="cfgEquitySatPct" class="config-input font-mono" value="25" min="0" max="100">
+          </div>
+          <div class="config-group">
+            <label class="input-lbl" for="cfgGoldPct">Gold & Silver Target %:</label>
+            <input type="number" id="cfgGoldPct" class="config-input font-mono" value="15" min="0" max="100">
+          </div>
+          <div class="config-group">
+            <label class="input-lbl" for="cfgLiquidPct">Liquid Buffer Target %:</label>
+            <input type="number" id="cfgLiquidPct" class="config-input font-mono" value="15" min="0" max="100">
+          </div>
+        </div>
+        <div id="configValidationMsg" class="config-validation font-mono">✓ Targets sum to 100%. Calculations updated live.</div>
+      </div>
+
+      <!-- FIRE Tracker Module -->
+      <div class="glass-card col-12 fire-card">
+        <div class="card-header">
+          <div class="title-with-badge">
+            <h2>FIRE Tracker & Decumulation Runway</h2>
+            <span class="fire-status-pill on-track" id="fireStatusPill">ON TRACK</span>
+          </div>
+          <div class="live-tag font-mono" id="fireScenarioLabel">Scenario: Default</div>
+        </div>
+        
+        <div id="fireReviewBanner" class="fire-review-banner" style="display:none;">
+          ⚠️ <strong>Re-basing Checkpoint:</strong> Next review date passed (~12m). Revisit expense assumptions.
+        </div>
+
+        <div class="fire-metrics-grid">
+          <div class="fire-stat-box">
+            <span class="lbl">Total Net Worth</span>
+            <strong class="val font-mono" id="fireTotalNw">₹ --</strong>
+            <span class="sub font-mono">Includes EPF & Bank</span>
+          </div>
+          <div class="fire-stat-box highlight-box">
+            <span class="lbl">FIRE Investable Net Worth</span>
+            <strong class="val font-mono highlight-cyan" id="fireInvestableNw">₹ --</strong>
+            <span class="sub font-mono">Excludes EPF & Short Goals</span>
+          </div>
+          <div class="fire-stat-box">
+            <span class="lbl">Required Corpus (Age 45)</span>
+            <strong class="val font-mono" id="fireRequiredCorpus">₹ --</strong>
+            <span class="sub font-mono" id="fireExpenseSub">3.0% SWR @ ₹60k/mo</span>
+          </div>
+          <div class="fire-stat-box">
+            <span class="lbl">Projected Corpus @ 45</span>
+            <strong class="val font-mono positive" id="fireProjectedCorpus">₹ --</strong>
+            <span class="sub font-mono" id="fireYearsSub">6% Real Return (13y)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bucket Rebalancing & Market Drawdown Engine -->
       <div class="glass-card col-12">
+        <div class="card-header">
+          <h2>Flat Bucket Rebalancer & Drawdown Trigger Engine</h2>
+          <div class="chart-controls">
+            <span class="live-tag" id="drawdownTag">Nifty 500: Drawdown --%</span>
+          </div>
+        </div>
+
+        <div class="bucket-grid" id="bucketGrid">
+          <!-- Rendered dynamically -->
+        </div>
+
+        <div class="rebalance-summary-box">
+          <div class="reb-stat" style="font-weight:600; margin-bottom:6px;">
+            <span>Bucket Rebalance & Drawdown Trigger Recommendations:</span>
+          </div>
+          <div id="bucketRecList">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Disciplined Consolidation & Pro-Rata Deployment Card -->
+      <div class="glass-card col-12">
+        <div class="card-header">
+          <h2>Disciplined Consolidation & Pro-Rata Deployment</h2>
+          <span class="live-tag" id="consolidationWindowBadge">SCHEDULED: March / September Window</span>
+        </div>
+        <div class="rebalance-summary-box">
+          <div class="reb-stat" style="font-weight:600; margin-bottom:8px;">
+            <span>Exit Proceeds & Pro-Rata Redeployment Plan Across Active 6-Fund Core:</span>
+          </div>
+          <div id="consolidationPlanContainer">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Goal Allocations Card -->
+      <div class="glass-card col-6">
+        <div class="card-header">
+          <h2>Goal Allocations & Idle Liquid Cash</h2>
+          <span class="live-tag">PURPOSE LAYER</span>
+        </div>
+        <div class="goal-alloc-list" id="goalAllocList">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <!-- Portfolio Performance Curve -->
+      <div class="glass-card col-6">
         <div class="card-header">
           <h2>Portfolio Performance Curve</h2>
           <div class="chart-controls">
             <span class="live-tag">HARDWARE-ACCELERATED ECHARTS</span>
           </div>
         </div>
-        <div class="canvas-wrapper" id="performanceChart" style="height: 280px; width: 100%;"></div>
+        <div class="canvas-wrapper" id="performanceChart" style="height: 240px; width: 100%;"></div>
       </div>
 
       <!-- Fund Allocation & Risk Exposure -->

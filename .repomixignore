@@ -1,0 +1,41 @@
+# Repomix Ignore Patterns
+
+# Repomix output files
+repomix-output.xml
+repomix-output.txt
+repomix-output.md
+repomix-output.json
+
+# Lockfiles & package manager files
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+**/bun.lockb
+**/go.sum
+**/Cargo.lock
+**/node_modules/**
+
+# Build artifacts, binaries, and caches
+**/build/**
+**/.gradle/**
+**/dist/**
+**/bin/**
+**/out/**
+**/__pycache__/**
+**/*.pyc
+**/*.class
+**/*.jar
+**/.next/**
+**/coverage/**
+
+# Large data files, logs, and database files
+data/**
+*.duckdb*
+*.zip
+*.pdf
+*.log
+
+# Environment & IDEs
+.git/**
+.idea/**
+.vscode/**
